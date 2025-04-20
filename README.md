@@ -4,7 +4,7 @@ A Python-based tool for analyzing and managing CubeSat project budgets.
 
 ## Features
 
-- Budget tracking and analysis
+- Budget tracking and analysis for Cubesatellite missions
 - Interactive visualization of budget allocation
 - Report generation
 - Excel import/export support
