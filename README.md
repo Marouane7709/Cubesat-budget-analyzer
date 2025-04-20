@@ -1,70 +1,44 @@
 # CubeSat Budget Analyzer
 
-A Python desktop application for analyzing CubeSat link and data budgets using PyQt6, SQLAlchemy, and other open-source libraries.
+A Python-based tool for analyzing and managing CubeSat project budgets.
 
 ## Features
 
-- **Link Budget Analysis**
-  - Calculate received power, C/N ratio, BER, and link margin
-  - Support for multiple propagation models (AWGN implemented)
-  - Visualize results with interactive charts
-  - Export analysis to PDF
+- Budget tracking and analysis
+- Interactive visualization of budget allocation
+- Report generation
+- Excel import/export support
+- Modern PyQt6-based GUI
 
-- **Data Budget Analysis**
-  - Calculate data generation, downlink capacity, and storage requirements
-  - Generate recommendations for storage optimization
-  - Visualize storage usage and data backlog
-  - Export analysis to CSV and Excel
+## Installation
 
-- **Project Management**
-  - Save and load projects
-  - Auto-save functionality
-  - Import/export configurations
-  - Light/dark theme support
+```bash
+pip install cubesat-budget-analyzer
+```
 
-## Requirements
+## Development Setup
 
-- Python 3.8 or higher
+To set up the project for development:
+
+```bash
+git clone https://github.com/Marouane7709/cubesat-budget-analyzer.git
+cd cubesat-budget-analyzer
+pip install -e .
+```
+
+## Dependencies
+
 - PyQt6
 - SQLAlchemy
+- matplotlib
 - pyqtgraph
 - reportlab
 - pandas
 - openpyxl
 
-## Installation
+## License
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/cube_sat_budget.git
-cd cube_sat_budget
-```
-
-2. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-## Usage
-
-1. Run the application:
-```bash
-python main.py
-```
-
-2. Log in with any username/password (authentication is currently a stub)
-
-3. Use the tabs to switch between Link Budget and Data Budget analysis
-
-4. Enter parameters and click "Calculate" to see results
-
-5. Export results using the appropriate buttons
+MIT License
 
 ## Project Structure
 
@@ -85,10 +59,6 @@ cube_sat_budget/
 │   └── light.qss
 └── main.py              # Application entry point
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Dependencies and Licenses
 
