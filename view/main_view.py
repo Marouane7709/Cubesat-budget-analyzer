@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTabWidget, QMenuBar, QMenu, QStatusBar,
-                            QMessageBox, QFileDialog, QPushButton)
-from PyQt6.QtCore import Qt
+                            QMessageBox, QFileDialog, QPushButton, QStackedWidget)
+from PyQt6.QtCore import Qt, pyqtSignal
 from view.link_budget_view import LinkBudgetView
 from view.data_budget_view import DataBudgetView
 from model.database import session, Project
@@ -9,6 +9,9 @@ import json
 from pathlib import Path
 
 class MainWindow(QMainWindow):
+    navigate_to_login = pyqtSignal()  # Add signal for navigation
+    navigate_to_home = pyqtSignal()  # Signal for navigating to home
+    
     def __init__(self, theme_manager):
         super().__init__()
         self.theme_manager = theme_manager
@@ -35,6 +38,8 @@ class MainWindow(QMainWindow):
         """Setup the main window UI components."""
         self.setWindowTitle("CubeSat Budget Analyzer")
         self.setMinimumSize(800, 600)
+        # Maximize the window
+        self.showMaximized()
         
         # Create central widget and layout
         central_widget = QWidget()
@@ -46,30 +51,30 @@ class MainWindow(QMainWindow):
         # Create menu bar
         self.create_menu_bar()
         
-        # Create tab widget
-        self.tab_widget = QTabWidget()
-        layout.addWidget(self.tab_widget)
+        # Create stacked widget instead of tab widget
+        self.stacked_widget = QStackedWidget()
+        layout.addWidget(self.stacked_widget)
         
-        # Add tabs
+        # Add pages
         self.link_budget_view = LinkBudgetView()
         self.data_budget_view = DataBudgetView()
         
-        self.tab_widget.addTab(self.link_budget_view, "Link Budget")
-        self.tab_widget.addTab(self.data_budget_view, "Data Budget")
+        self.stacked_widget.addWidget(self.link_budget_view)
+        self.stacked_widget.addWidget(self.data_budget_view)
         
         # Add spacer to push content up
         layout.addStretch()
         
         # Create bottom navigation bar
         self.bottom_nav = QWidget()
-        self.bottom_nav.setObjectName("bottom_nav")  # Set object name for finding later
+        self.bottom_nav.setObjectName("bottom_nav")
         bottom_layout = QHBoxLayout(self.bottom_nav)
         bottom_layout.setContentsMargins(10, 10, 10, 10)
         
-        self.back_button = QPushButton("Back to Login")
-        self.back_button.clicked.connect(self.go_back_to_login)
+        self.back_button = QPushButton("Back to Home")
+        self.back_button.clicked.connect(self.go_back_to_home)
         bottom_layout.addWidget(self.back_button)
-        bottom_layout.addStretch()  # Push the button to the left
+        bottom_layout.addStretch()
         
         layout.addWidget(self.bottom_nav)
         
@@ -132,18 +137,16 @@ class MainWindow(QMainWindow):
         self.bottom_nav.setStyleSheet(bottom_nav_style)
         self.back_button.setStyleSheet(button_style)
         
-    def go_back_to_login(self):
-        """Return to the login screen."""
+    def go_back_to_home(self):
+        """Return to the home screen."""
         reply = QMessageBox.question(
-            self, "Return to Login",
-            "Are you sure you want to return to the login screen? Any unsaved changes will be lost.",
+            self, "Return to Home",
+            "Are you sure you want to return to the home screen? Any unsaved changes will be lost.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            # Close the current window
-            self.close()
-            # The application will return to the login screen automatically
-            # through the main loop in run.py
+            self.hide()
+            self.navigate_to_home.emit()
             
     def create_menu_bar(self):
         """Create the application menu bar."""
@@ -285,4 +288,13 @@ class MainWindow(QMainWindow):
             "CubeSat Budget Analyzer v1.0\n\n"
             "A tool for analyzing CubeSat link and data budgets.\n\n"
             "© 2024 Your Organization"
-        ) 
+        )
+
+    def switch_to_module(self, module_name: str):
+        """Switch to the specified module."""
+        if module_name == "link_budget":
+            self.stacked_widget.setCurrentWidget(self.link_budget_view)
+            self.setWindowTitle("CubeSat Budget Analyzer - Link Budget")
+        elif module_name == "data_budget":
+            self.stacked_widget.setCurrentWidget(self.data_budget_view)
+            self.setWindowTitle("CubeSat Budget Analyzer - Data Budget") 
