@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
 from sqlalchemy.sql import func
-from .database import Base
+from sqlalchemy.orm import relationship
+from .base import Base
 
 class Project(Base):
     __tablename__ = 'projects'
@@ -29,6 +30,10 @@ class Project(Base):
     # Results and Analysis
     link_budget_results = Column(JSON)  # Store detailed calculation results
     data_budget_results = Column(JSON)  # Store data analysis results
+    
+    # Relationships
+    link_budgets = relationship("LinkBudget", back_populates="project")
+    data_budgets = relationship("DataBudget", back_populates="project")
     
     def to_dict(self):
         """Convert project to dictionary for JSON export."""

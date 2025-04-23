@@ -1,11 +1,8 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 from PyQt6.QtCore import QTimer
-
-# Create the base class for declarative models
-Base = declarative_base()
+from .base import Base
 
 # Database configuration
 DB_PATH = 'cubesat_budget.db'
@@ -15,17 +12,6 @@ session = Session()
 
 # Auto-save timer
 auto_save_timer = QTimer()
-
-class Project(Base):
-    __tablename__ = 'projects'
-    
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    link_budgets = relationship("LinkBudget", back_populates="project")
-    data_budgets = relationship("DataBudget", back_populates="project")
 
 class LinkBudget(Base):
     __tablename__ = 'link_budgets'
@@ -56,6 +42,8 @@ class DataBudget(Base):
 
 def init_db():
     """Initialize the database, creating all tables."""
+    # Import here to avoid circular import
+    from .project import Project
     Base.metadata.create_all(ENGINE)
 
 def auto_save():

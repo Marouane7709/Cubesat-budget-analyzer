@@ -1,294 +1,282 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                             QLineEdit, QPushButton, QMessageBox, QWidget,
-                            QMenuBar, QMainWindow, QApplication)
+                            QMenuBar, QMainWindow, QApplication, QFrame, QCheckBox)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap, QFont, QPalette, QColor, QPainter, QPainterPath, QIcon
+from PyQt6.QtSvg import QSvgRenderer
 
-class LoginWindow(QMainWindow):
-    login_successful = pyqtSignal()
+class LoginCard(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("login_card")
+        self.setStyleSheet("""
+            QFrame#login_card {
+                background: #2A2A2A;
+                border: 1px solid #505050;
+                border-radius: 8px;
+            }
+            QFrame#login_card[light="true"] {
+                background: #FFFFFF;
+                border: 1px solid #E0E0E0;
+            }
+        """)
+        self.setFixedWidth(360)
+        
+        # Main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 32, 24, 32)
+        layout.setSpacing(20)
+        
+        # Rocket SVG Icon
+        icon = QLabel()
+        icon.setFixedSize(150, 150)
+        icon.setStyleSheet("background: transparent;")
+        
+        # Embed SVG directly with duotone colors
+        svg_data = '''<?xml version="1.0" encoding="UTF-8"?>
+        <svg width="150" height="150" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#FFFFFF" d="M13.13 22.19l-1.63-3.83c1.57-.58 3.04-1.36 4.4-2.27l-2.77 6.1M5.64 12.5l-3.83-1.63 6.1-2.77c-.91 1.36-1.69 2.83-2.27 4.4M21.61 2.39S16.66.269 11 5.93c-2.19 2.19-3.5 4.6-4.32 6.91-.23.65-.04 1.35.46 1.85l1.83 1.83c.5.5 1.2.69 1.85.46 2.31-.82 4.72-2.13 6.91-4.32 5.66-5.66 3.54-10.61 3.54-10.61m-5.43 7.33c-.78.78-2.05.78-2.83 0-.78-.78-.78-2.05 0-2.83.78-.78 2.05-.78 2.83 0 .78.78.78 2.05 0 2.83m-7.5 12.99l-3.24-3.24c-.51-.51-1.34-.51-1.85 0-.51.51-.51 1.34 0 1.85l3.24 3.24c.51.51 1.34.51 1.85 0 .51-.51.51-1.34 0-1.85"/>
+            <path fill="#4CAF50" d="M13.13 22.19l-1.63-3.83c1.57-.58 3.04-1.36 4.4-2.27l-2.77 6.1M5.64 12.5l-3.83-1.63 6.1-2.77c-.91 1.36-1.69 2.83-2.27 4.4M21.61 2.39S16.66.269 11 5.93c-2.19 2.19-3.5 4.6-4.32 6.91-.23.65-.04 1.35.46 1.85l1.83 1.83c.5.5 1.2.69 1.85.46 2.31-.82 4.72-2.13 6.91-4.32 5.66-5.66 3.54-10.61 3.54-10.61m-5.43 7.33c-.78.78-2.05.78-2.83 0-.78-.78-.78-2.05 0-2.83.78-.78 2.05-.78 2.83 0 .78.78.78 2.05 0 2.83m-7.5 12.99l-3.24-3.24c-.51-.51-1.34-.51-1.85 0-.51.51-.51 1.34 0 1.85l3.24 3.24c.51.51 1.34.51 1.85 0 .51-.51.51-1.34 0-1.85"/>
+        </svg>'''
+        
+        renderer = QSvgRenderer()
+        renderer.load(bytes(svg_data, 'utf-8'))
+        icon.setProperty("renderer", renderer)
+        icon.paintEvent = lambda e: renderer.render(QPainter(icon))
+        
+        # Title and subtitle
+        self.title = QLabel("CubeSat Budget Analyzer")
+        self.title.setObjectName("title_label")
+        self.title.setFont(QFont("Inter", 24, QFont.Weight.Bold))
+        self.title.setStyleSheet("""
+            QLabel#title_label {
+                color: #4CAF50;
+            }
+            QLabel#title_label[light="true"] {
+                color: #2E7D32;
+            }
+        """)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        self.subtitle = QLabel("Satellite Communication and\nData Budget Analysis Tool")
+        self.subtitle.setObjectName("subtitle_label")
+        self.subtitle.setFont(QFont("Inter", 12))
+        self.subtitle.setStyleSheet("""
+            QLabel#subtitle_label {
+                color: #B0B0B0;
+            }
+            QLabel#subtitle_label[light="true"] {
+                color: #616161;
+            }
+        """)
+        self.subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Username field
+        self.username = QLineEdit()
+        self.username.setPlaceholderText("Enter username")
+        self.username.setFixedHeight(40)
+        
+        # Password field
+        self.password = QLineEdit()
+        self.password.setPlaceholderText("Enter password")
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setFixedHeight(40)
+        
+        # Remember me and Forgot password row
+        remember_row = QHBoxLayout()
+        remember_row.setContentsMargins(0, 0, 0, 0)
+        
+        self.remember = QCheckBox("Remember me")
+        self.remember.setFont(QFont("Inter", 11))
+        self.remember.setStyleSheet("""
+            QCheckBox {
+                color: #E0E0E0;
+            }
+            QCheckBox[light="true"] {
+                color: #424242;
+            }
+        """)
+        
+        self.forgot = QPushButton("Forgot Password?")
+        self.forgot.setFont(QFont("Inter", 11))
+        self.forgot.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.forgot.setFlat(True)
+        self.forgot.setStyleSheet("""
+            QPushButton {
+                color: #4CAF50;
+                border: none;
+                text-decoration: underline;
+                text-align: right;
+            }
+            QPushButton:hover {
+                color: #66BB6A;
+            }
+        """)
+        
+        remember_row.addWidget(self.remember)
+        remember_row.addWidget(self.forgot)
+        
+        # Login button
+        self.login_btn = QPushButton("Login")
+        self.login_btn.setFont(QFont("Inter", 16, QFont.Weight.Bold))
+        self.login_btn.setFixedHeight(44)
+        self.login_btn.setEnabled(False)
+        
+        # Add all widgets to layout
+        layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.title)
+        layout.addWidget(self.subtitle)
+        layout.addWidget(self.username)
+        layout.addWidget(self.password)
+        layout.addLayout(remember_row)
+        layout.addWidget(self.login_btn)
+        
+        # Setup field styling
+        self.setup_field_styling()
+        
+        # Connect signals
+        self.username.textChanged.connect(self.check_fields)
+        self.password.textChanged.connect(self.check_fields)
+        
+    def setup_field_styling(self):
+        """Setup styling for input fields"""
+        field_style = """
+            QLineEdit {
+                background: #1E1E1E;
+                border: 1px solid #505050;
+                border-radius: 6px;
+                padding: 0 12px;
+                font: 12pt 'Inter';
+                color: #E0E0E0;
+            }
+            QLineEdit:focus {
+                border: 2px solid #4CAF50;
+            }
+            QLineEdit::placeholder {
+                color: #808080;
+            }
+            QLineEdit[light="true"] {
+                background: #FAFAFA;
+                border: 1px solid #E0E0E0;
+                color: #202020;
+            }
+            QLineEdit[light="true"]:focus {
+                border: 2px solid #4CAF50;
+            }
+            QLineEdit[light="true"]::placeholder {
+                color: #808080;
+            }
+        """
+        self.username.setStyleSheet(field_style)
+        self.password.setStyleSheet(field_style)
+        
+        button_style = """
+            QPushButton {
+                background: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                font: bold 16pt 'Inter';
+            }
+            QPushButton:hover {
+                background: #66BB6A;
+            }
+            QPushButton:disabled {
+                background: #BDBDBD;
+            }
+        """
+        self.login_btn.setStyleSheet(button_style)
+        
+    def check_fields(self):
+        """Enable login button only if both fields have content"""
+        self.login_btn.setEnabled(
+            bool(self.username.text()) and bool(self.password.text())
+        )
+
+class LoginWindow(QWidget):
+    login_successful = pyqtSignal(str, str, bool)
+    back_requested = pyqtSignal()
+    forgot_requested = pyqtSignal()
     
-    def __init__(self, theme_manager):
+    def __init__(self, theme_manager=None):
         super().__init__()
         self.theme_manager = theme_manager
         self.setup_ui()
-        self.update_theme(self.theme_manager.current_theme)
-        self.theme_manager.theme_changed.connect(self.update_theme)
-
-    def update_theme(self, theme):
-        """Update the window theme."""
-        if theme == 'dark':
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #121212;
-                }
-                QLabel {
-                    color: #E0E0E0;
-                }
-                QWidget#logo_placeholder {
-                    background-color: #1E1E1E;
-                    border: 2px dashed #424242;
-                }
-                QLabel#title_label {
-                    color: #2196F3;
-                }
-                QLabel#subtitle_label {
-                    color: #9E9E9E;
-                }
-                QWidget#form_container {
-                    background-color: #1E1E1E;
-                    border: 1px solid #424242;
-                    border-radius: 4px;
-                    padding: 20px;
-                }
-                QLineEdit {
-                    background-color: #2D2D2D;
-                    color: #E0E0E0;
-                    border: 1px solid #424242;
-                    border-radius: 4px;
-                    padding: 8px;
-                    min-height: 20px;
-                    selection-background-color: #2196F3;
-                }
-                QLineEdit:focus {
-                    border: 1px solid #2196F3;
-                    background-color: #1E1E1E;
-                }
-                QPushButton {
-                    border: none;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    min-width: 80px;
-                    font-size: 13px;
-                }
-                QPushButton#login_button {
-                    background-color: #2196F3;
-                    color: white;
-                }
-                QPushButton#login_button:hover {
-                    background-color: #1976D2;
-                }
-                QPushButton#cancel_button {
-                    background-color: #424242;
-                    color: #E0E0E0;
-                }
-                QPushButton#cancel_button:hover {
-                    background-color: #616161;
-                }
-                QMenuBar {
-                    background-color: #1E1E1E;
-                    color: #E0E0E0;
-                }
-                QMenuBar::item:selected {
-                    background-color: #424242;
-                }
-            """)
-        else:
-            self.setStyleSheet("""
-                QMainWindow {
-                    background-color: #FFFFFF;
-                }
-                QLabel {
-                    color: #212121;
-                }
-                QWidget#logo_placeholder {
-                    background-color: #F5F5F5;
-                    border: 2px dashed #BDBDBD;
-                }
-                QLabel#title_label {
-                    color: #2196F3;
-                }
-                QLabel#subtitle_label {
-                    color: #757575;
-                }
-                QWidget#form_container {
-                    background-color: #FFFFFF;
-                    border: 1px solid #E0E0E0;
-                    border-radius: 4px;
-                    padding: 20px;
-                }
-                QLineEdit {
-                    background-color: #FFFFFF;
-                    color: #212121;
-                    border: 1px solid #BDBDBD;
-                    border-radius: 4px;
-                    padding: 8px;
-                    min-height: 20px;
-                }
-                QLineEdit:focus {
-                    border: 1px solid #2196F3;
-                }
-                QPushButton {
-                    border: none;
-                    padding: 6px 12px;
-                    border-radius: 4px;
-                    min-width: 80px;
-                    font-size: 13px;
-                }
-                QPushButton#login_button {
-                    background-color: #2196F3;
-                    color: white;
-                }
-                QPushButton#login_button:hover {
-                    background-color: #1976D2;
-                }
-                QPushButton#cancel_button {
-                    background-color: #F5F5F5;
-                    color: #757575;
-                    border: 1px solid #BDBDBD;
-                }
-                QPushButton#cancel_button:hover {
-                    background-color: #E0E0E0;
-                }
-            """)
         
     def setup_ui(self):
-        """Setup the login dialog UI."""
-        self.setWindowTitle("Login")
-        self.setFixedSize(400, 600)
+        """Setup the login view UI"""
+        # Set window properties
+        self.setWindowTitle("Login - CubeSat Budget Analyzer")
+        self.resize(800, 600)
         
-        # Center the window on screen
-        screen = QApplication.primaryScreen().geometry()
-        x = (screen.width() - self.width()) // 2
-        y = (screen.height() - self.height()) // 2
-        self.move(x, y)
+        # Create main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        # Create central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # Create centered container
+        container = QWidget()
+        container.setObjectName("login_container")
+        container_layout = QVBoxLayout(container)
+        container_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # Main layout
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(30, 10, 30, 30)
-
-        # Create menu bar
-        menubar = self.menuBar()
+        # Create and add login card
+        self.card = LoginCard()
+        container_layout.addWidget(self.card, 0, Qt.AlignmentFlag.AlignCenter)
         
-        # File menu
-        file_menu = menubar.addMenu("File")
-        exit_action = file_menu.addAction("Exit")
-        exit_action.triggered.connect(self.close)
+        # Add container to main layout
+        layout.addWidget(container)
         
-        # View menu
-        view_menu = menubar.addMenu("View")
-        toggle_theme_action = view_menu.addAction("Toggle Theme")
-        toggle_theme_action.triggered.connect(self.theme_manager.toggle_theme)
+        # Connect signals
+        self.card.login_btn.clicked.connect(self.on_login)
+        self.card.forgot.clicked.connect(self.forgot_requested)
         
-        # Help menu
-        help_menu = menubar.addMenu("Help")
-        about_action = help_menu.addAction("About")
-        about_action.triggered.connect(self.show_about)
-        
-        # Logo placeholder
-        logo_widget = QWidget()
-        logo_widget.setObjectName("logo_placeholder")
-        logo_widget.setFixedSize(150, 150)
-        main_layout.addWidget(logo_widget, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        # Title
-        title_label = QLabel("CubeSat Budget Analyzer")
-        title_label.setObjectName("title_label")
-        title_font = QFont()
-        title_font.setPointSize(20)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        main_layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        # Subtitle
-        subtitle_label = QLabel("Satellite Communication and Data\nBudget Analysis Tool")
-        subtitle_label.setObjectName("subtitle_label")
-        subtitle_font = QFont()
-        subtitle_font.setPointSize(11)
-        subtitle_label.setFont(subtitle_font)
-        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(subtitle_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        # Add some spacing
-        main_layout.addSpacing(20)
-        
-        # Login form container
-        form_container = QWidget()
-        form_container.setObjectName("form_container")
-        form_layout = QVBoxLayout(form_container)
-        form_layout.setSpacing(15)
-        form_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Username input
-        username_label = QLabel("Username:")
-        self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText("Enter your username")
-        form_layout.addWidget(username_label)
-        form_layout.addWidget(self.username_input)
-        
-        # Add spacing between fields
-        form_layout.addSpacing(5)
-        
-        # Password input
-        password_label = QLabel("Password:")
-        self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText("Enter your password")
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        form_layout.addWidget(password_label)
-        form_layout.addWidget(self.password_input)
-        
-        # Add spacing before buttons
-        form_layout.addSpacing(15)
-        
-        # Buttons container with fixed width
-        button_container = QWidget()
-        button_layout = QHBoxLayout(button_container)
-        button_layout.setSpacing(8)
-        button_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.login_button = QPushButton("Login")
-        self.login_button.setObjectName("login_button")
-        self.login_button.setFixedWidth(130)
-        self.login_button.setFixedHeight(30)
-        self.login_button.clicked.connect(self.authenticate)
-        button_layout.addWidget(self.login_button)
-        
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.setObjectName("cancel_button")
-        self.cancel_button.setFixedWidth(130)
-        self.cancel_button.setFixedHeight(30)
-        self.cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(self.cancel_button)
-        
-        form_layout.addWidget(button_container, alignment=Qt.AlignmentFlag.AlignCenter)
-        main_layout.addWidget(form_container)
-
-    def show_about(self):
-        """Show about dialog."""
-        QMessageBox.about(
-            self,
-            "About CubeSat Budget Analyzer",
-            "CubeSat Budget Analyzer v1.0\n\n"
-            "A tool for analyzing CubeSat link and data budgets.\n\n"
-            "© 2024 Your Organization"
-        )
-
-    def reject(self):
-        """Handle dialog rejection."""
-        self.close()
-
-    def authenticate(self):
-        """Authenticate the user."""
-        username = self.username_input.text()
-        password = self.password_input.text()
-        
-        # TODO: Implement proper authentication
-        # For now, accept any non-empty username/password
-        if username and password:
-            self.login_successful.emit()
-            self.close()
+        # Apply theme
+        self.update_theme(self.theme_manager.current_theme if self.theme_manager else 'light')
+        if self.theme_manager:
+            self.theme_manager.theme_changed.connect(self.update_theme)
+            
+    def update_theme(self, theme):
+        """Update the view's theme"""
+        if theme == 'dark':
+            self.setStyleSheet("""
+                QWidget#login_container {
+                    background: #1E1E1E;
+                }
+            """)
+            self.card.setProperty("light", "false")
+            self.card.username.setProperty("light", "false")
+            self.card.password.setProperty("light", "false")
+            self.card.title.setProperty("light", "false")
+            self.card.subtitle.setProperty("light", "false")
+            self.card.remember.setProperty("light", "false")
         else:
-            # Clear the password field
-            self.password_input.clear()
-            # Show error message
-            QMessageBox.warning(
-                self,
-                "Authentication Failed",
-                "Please enter both username and password"
-            )
-            # Keep the window open and focus on the username field
-            self.username_input.setFocus() 
+            self.setStyleSheet("""
+                QWidget#login_container {
+                    background: #F4F4F4;
+                }
+            """)
+            self.card.setProperty("light", "true")
+            self.card.username.setProperty("light", "true")
+            self.card.password.setProperty("light", "true")
+            self.card.title.setProperty("light", "true")
+            self.card.subtitle.setProperty("light", "true")
+            self.card.remember.setProperty("light", "true")
+            
+    def on_login(self):
+        """Handle login button click"""
+        self.login_successful.emit(
+            self.card.username.text(),
+            self.card.password.text(),
+            self.card.remember.isChecked()
+        )
+        
+    def show_error(self, message):
+        """Show error message"""
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(self, "Login Error", message)
+        
+    def clear_fields(self):
+        """Clear input fields"""
+        self.card.username.clear()
+        self.card.password.clear()
+        self.card.remember.setChecked(False) 

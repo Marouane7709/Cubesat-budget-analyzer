@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer, QObject
-from controller.theme_manager import ThemeManager
+from view.theme_view import ThemeView
 from view.login_view import LoginWindow
 from view.main_view import MainWindow
 from view.home_view import HomeWindow
@@ -16,11 +16,13 @@ from controller.home_controller import HomeController
 from model.database import init_db, auto_save_timer
 
 class ApplicationManager(QObject):
+    """Main application manager class."""
+    
     def __init__(self):
         super().__init__()
         self.logger = setup_logging()
         self.app = None
-        self.theme_manager = None
+        self.theme_view = None
         self.main_window = None
         self.login_window = None
         self.home_window = None
@@ -39,10 +41,10 @@ class ApplicationManager(QObject):
             self.logger.info("Initializing database")
             init_db()
             
-            # Setup theme manager
-            self.logger.info("Setting up theme manager")
-            self.theme_manager = ThemeManager()
-            self.theme_manager.apply_theme('dark')  # Default theme
+            # Setup theme view
+            self.logger.info("Setting up theme view")
+            self.theme_view = ThemeView()
+            self.theme_view.apply_theme('dark')  # Default theme
             
             # Start auto-save timer
             self.logger.info("Starting auto-save timer")
@@ -67,8 +69,8 @@ class ApplicationManager(QObject):
             
             # Create login window if it doesn't exist
             if not self.login_window:
-                self.login_window = LoginWindow(self.theme_manager)
-                self.login_window.login_successful.connect(self.show_home)  # Connect to show_home instead of show_main
+                self.login_window = LoginWindow(self.theme_view)
+                self.login_window.login_successful.connect(self.show_home)
             
             self.login_window.show()
             return True
@@ -90,10 +92,10 @@ class ApplicationManager(QObject):
             
             # Create home window if it doesn't exist
             if not self.home_window:
-                self.home_window = HomeWindow(self.theme_manager)
+                self.home_window = HomeWindow(self.theme_view)
                 self.home_controller = HomeController(self.home_window)
                 # Connect signals
-                self.theme_manager.theme_changed.connect(self.home_window.update)
+                self.theme_view.theme_changed.connect(self.home_window.update)
                 self.home_controller.navigate_to_login.connect(self.show_login)
                 self.home_controller.navigate_to_module.connect(self.load_module)
             
@@ -117,8 +119,8 @@ class ApplicationManager(QObject):
             
             # Create main window if it doesn't exist
             if not self.main_window:
-                self.main_window = MainWindow(self.theme_manager)
-                self.main_window.navigate_to_home.connect(self.show_home)  # Connect the new home navigation signal
+                self.main_window = MainWindow(self.theme_view)
+                self.main_window.navigate_to_home.connect(self.show_home)
             
             self.main_window.show()
             return True
