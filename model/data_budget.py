@@ -102,15 +102,15 @@ class DataBudgetCalculator:
         mission_duration_hours = params['mission_duration']  # hours
         downlink_opportunities = params['downlink_opportunities']  # list of windows
         
-        # Convert to bytes
+        # Converting to bytes
         data_rate_bps = data_rate_mbps * 1e6
         storage_capacity_bytes = storage_capacity_mb * self.MB_TO_BITS
         
-        # Calculate total data generated
+        # Calculate total data generated in bytes
         mission_duration_seconds = mission_duration_hours * 3600
         total_data_generated = data_rate_bps * mission_duration_seconds / self.MB_TO_BITS
         
-        # Calculate downlink capacity
+        # Calculate the downlink capacity
         total_downlink_capacity = self._calculate_downlink_capacity(
             downlink_opportunities, params)
         

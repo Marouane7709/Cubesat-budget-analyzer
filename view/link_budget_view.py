@@ -1,18 +1,15 @@
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSplitter,
     QLabel, QComboBox, QPushButton, QDoubleSpinBox, QSizePolicy, QGroupBox, QFrame, QScrollArea,
-    QTabWidget
+    QTabWidget, QMessageBox
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QFont, QPalette, QColor
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
-import math
-import sys
 import numpy as np
 from scipy.special import erfc
+import pyqtgraph as pg
+import math
+import sys
 
 class ParameterCard(QGroupBox):
     def __init__(self, title: str, fields: list, parent=None):
@@ -130,48 +127,31 @@ class PlotWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Create matplotlib figure with even larger size
-        self.figure = Figure(figsize=(16, 10), dpi=100)  # Increased size
-        self.canvas = FigureCanvas(self.figure)
+        # Create pyqtgraph plot with enhanced styling
+        self.pg_plot = pg.PlotWidget()
+        self.pg_plot.setBackground('w')
+        self.pg_plot.showGrid(x=True, y=True, alpha=0.3)
+        self.pg_plot.setLabel('left', 'Link Margin', units='dB', color='k')
+        self.pg_plot.setLabel('bottom', 'Parameter Value', color='k')
         
-        # Enable tight layout and better backend
-        self.figure.set_tight_layout(True)
+        # Style the plot
+        self.pg_plot.getAxis('left').setPen(pg.mkPen(color='k', width=1))
+        self.pg_plot.getAxis('bottom').setPen(pg.mkPen(color='k', width=1))
+        self.pg_plot.getAxis('left').setTextPen(pg.mkPen(color='k'))
+        self.pg_plot.getAxis('bottom').setTextPen(pg.mkPen(color='k'))
         
-        # Store current data series and background
-        self.data_series = []
-        self.background = None
+        # Add plot to layout
+        layout.addWidget(self.pg_plot)
         
-        # Create the navigation toolbar with custom style
-        self.toolbar = NavigationToolbar(self.canvas, self)
-        self.toolbar.setStyleSheet("""
-            QToolBar {
-                background: transparent;
-                spacing: 6px;
-                border: none;
-                min-height: 48px;
-            }
-            QToolButton {
-                background: transparent;
-                border: none;
-                border-radius: 4px;
-                padding: 8px;
-                margin: 2px;
-            }
-            QToolButton:hover {
-                background: rgba(255, 255, 255, 0.1);
-            }
-        """)
+        # Store current curves
+        self.pg_curves = []
         
-        # Add toolbar and canvas to layout
-        layout.addWidget(self.toolbar)
-        layout.addWidget(self.canvas)
-        
-        # Setup controls with larger size
+        # Setup controls
         controls = QHBoxLayout()
         controls.setContentsMargins(12, 12, 12, 12)
         controls.setSpacing(12)
         
-        # Plot type selector with larger size
+        # Plot type selector
         self.plot_type = QComboBox()
         self.plot_type.addItems([
             "BER vs Eb/N0 [dB]",
@@ -180,339 +160,153 @@ class PlotWidget(QWidget):
         ])
         self.plot_type.setMinimumHeight(36)
         
-        # Modulation scheme selector with larger size
+        # Modulation scheme selector
         self.modulation = QComboBox()
-        self.modulation.addItems([
-            "BPSK",
-            "QPSK",
-            "8PSK",
-            "16PSK"  # Added 16PSK
-        ])
+        self.modulation.addItems(["BPSK", "QPSK", "8-PSK"])
         self.modulation.setMinimumHeight(36)
         
-        # Style the comboboxes
-        for combo in [self.plot_type, self.modulation]:
-            combo.setStyleSheet("""
-                QComboBox {
-                    background: #2b2b2b;
-                    border: 1px solid #3d3d3d;
-                    border-radius: 4px;
-                    padding: 8px 12px;
-                    min-width: 180px;
-                    color: white;
-                    font-size: 14px;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                }
-                QComboBox::down-arrow {
-                    image: none;
-                    border: none;
-                }
-            """)
-        
-        # Add labels and widgets to controls
-        for label_text, widget in [("Plot Type:", self.plot_type), ("Modulation:", self.modulation)]:
-            label = QLabel(label_text)
-            label.setStyleSheet("color: white; font-size: 14px;")
-            controls.addWidget(label)
-            controls.addWidget(widget)
+        # Add controls to layout
+        controls.addWidget(QLabel("Plot Type:"))
+        controls.addWidget(self.plot_type)
+        controls.addWidget(QLabel("Modulation:"))
+        controls.addWidget(self.modulation)
         controls.addStretch()
-        
-        # Generate Plot button with larger size
-        self.plot_button = QPushButton("Generate Plot")
-        self.plot_button.setMinimumHeight(36)
-        self.plot_button.setStyleSheet("""
-            QPushButton {
-                background: #0d47a1;
-                border-radius: 4px;
-                color: white;
-                padding: 8px 24px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 140px;
-            }
-            QPushButton:hover {
-                background: #1565c0;
-            }
-        """)
-        controls.addWidget(self.plot_button)
         
         layout.addLayout(controls)
         
-        # Enable mouse events and better interaction
-        self.canvas.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.canvas.setFocus()
+        # Connect signals
+        self.plot_type.currentTextChanged.connect(self._generate_plot)
+        self.modulation.currentTextChanged.connect(self._generate_plot)
         
-        # Connect events for smooth interaction
-        self.canvas.mpl_connect('draw_event', self._on_draw)
-        self.canvas.mpl_connect('resize_event', self._on_resize)
-        self.canvas.mpl_connect('motion_notify_event', self._on_motion)
-        
-        # Set up animation timer for smooth updates
-        self._timer = QTimer()
-        self._timer.setInterval(16)  # 60 FPS
-        self._timer.timeout.connect(self._update_plot)
-        self._timer.start()
-        
-        # Initialize plot state
-        self._last_cursor_pos = None
-        self._is_panning = False
-        self._zoom_scale = 1.0
+        # Setup timer for real-time updates
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self._update_real_time)
+        self.update_timer.start(100)  # Update every 100ms
 
-    def _on_draw(self, event):
-        """Cache the background for blitting on draw events."""
-        if self.figure.axes:
-            self.background = self.canvas.copy_from_bbox(self.figure.axes[0].bbox)
-
-    def _on_motion(self, event):
-        """Handle smooth panning and cursor updates."""
-        if not event.inaxes or not self.background:
-            return
+    def _calculate_link_budget(self, params):
+        """Calculate link budget using parent's parameters."""
+        if not self.parent or not hasattr(self.parent, 'calculate_clicked'):
+            raise Exception("Cannot calculate link budget - parent view not accessible")
             
-        if self._is_panning and event.button == 1:  # Left mouse button
-            if self._last_cursor_pos:
-                dx = event.xdata - self._last_cursor_pos[0]
-                dy = event.ydata - self._last_cursor_pos[1]
-                ax = event.inaxes
-                
-                # Update limits with smooth transition
-                x1, x2 = ax.get_xlim()
-                y1, y2 = ax.get_ylim()
-                
-                ax.set_xlim(x1 - dx, x2 - dx)
-                ax.set_ylim(y1 - dy, y2 - dy)
-                
-                # Restore background and redraw
-                self.canvas.restore_region(self.background)
-                ax.draw_artist(ax.patch)
-                for line in ax.lines:
-                    ax.draw_artist(line)
-                self.canvas.blit(ax.bbox)
-                
-        self._last_cursor_pos = (event.xdata, event.ydata)
-
-    def _on_resize(self, event):
-        """Handle window resize events."""
-        # Update figure size while maintaining aspect ratio
-        w, h = self.canvas.get_width_height()
-        self.figure.set_size_inches(w/self.figure.get_dpi(), h/self.figure.get_dpi())
-        
-        # Force tight layout update
-        self.figure.tight_layout()
-        
-        # Redraw with blitting
-        if self.background:
-            self.canvas.restore_region(self.background)
-            if self.figure.axes:
-                ax = self.figure.axes[0]
-                ax.draw_artist(ax.patch)
-                for line in ax.lines:
-                    ax.draw_artist(line)
-                self.canvas.blit(ax.bbox)
-        else:
-            self.canvas.draw_idle()
-
-    def _update_plot(self):
-        """Update the plot for smooth animations."""
-        if self.figure.axes and self.background:
-            ax = self.figure.axes[0]
-            self.canvas.restore_region(self.background)
-            ax.draw_artist(ax.patch)
-            for line in ax.lines:
-                ax.draw_artist(line)
-            self.canvas.blit(ax.bbox)
-
-    def setSizeHint(self):
-        """Set the preferred size for the widget."""
-        return QSize(1600, 1000)  # Even larger default size
-
-    def minimumSizeHint(self):
-        """Set the minimum size for the widget."""
-        return QSize(1200, 800)  # Larger minimum size
-
-    def get_ebno_value(self):
-        """Get Eb/N0 value from parent view."""
-        if self.parent and hasattr(self.parent, 'ebno'):
-            return self.parent.ebno.value()
-        return 10.0  # Default value if not available
-
-    def _create_ber_plot(self):
-        """Create a plot showing BER vs Eb/N0 with modern styling."""
         try:
-            # Clear any existing plots
-            self.clear_data_series()
+            # Emit the calculation signal and wait for results
+            self.parent.calculate_clicked.emit(params)
             
-            # Create subplot with specific size ratio
-            ax = self.figure.add_subplot(111)
+            # Create a dictionary to store results
+            results = {}
             
-            # Generate Eb/N0 points
-            eb_n0_db = np.linspace(0, 20, 500)  # Increased range and points
-            eb_n0_linear = 10**(eb_n0_db/10)
+            # Calculate EIRP
+            tx_power_dbm = params['tx_power_dbm']
+            tx_gain_dbi = params['tx_gain_dbi']
+            eirp = tx_power_dbm + tx_gain_dbi
+            results['eirp'] = f"{eirp:.2f} dBm"
             
-            # Calculate BER for each modulation scheme
-            ber_bpsk_qpsk = 0.5 * erfc(np.sqrt(eb_n0_linear))
-            ber_8psk = (2/3) * erfc(np.sqrt(3 * eb_n0_linear * np.log2(8) / 8))
+            # Calculate Path Loss
+            freq_hz = params['frequency_hz']
+            distance_km = params['distance_km']
+            path_loss = 20 * np.log10(4 * np.pi * distance_km * 1000 * freq_hz / 3e8)
+            results['path_loss'] = f"{path_loss:.2f} dB"
             
-            # Plot styling
-            ax.set_facecolor('white')
-            self.figure.patch.set_facecolor('white')
+            # Calculate Received Power
+            rx_gain_dbi = params['rx_gain_dbi']
+            rx_power = eirp - path_loss + rx_gain_dbi
+            results['received_power'] = f"{rx_power:.2f} dBm"
             
-            # Plot curves
-            ax.semilogy(eb_n0_db, ber_bpsk_qpsk, '-', color='#2196F3', 
-                       label='BPSK/QPSK', linewidth=1.5)
-            ax.semilogy(eb_n0_db, ber_8psk, '-', color='#FF9800',
-                       label='8-PSK', linewidth=1.5)
+            # Calculate C/N0
+            k = 1.38e-23  # Boltzmann constant
+            temp_k = params['temperature_k']
+            rx_nf_db = params['rx_noise_figure_db']
+            impl_loss_db = params['rx_implementation_loss_db']
             
-            # Add threshold lines
-            ax.axhline(y=1e-3, color='#ffcdd2', linestyle='--', linewidth=1)
-            ax.axhline(y=1e-5, color='#c8e6c9', linestyle='--', linewidth=1)
+            n0_dbm = 10 * np.log10(k * temp_k * 1000)  # Convert to dBm/Hz
+            cn0 = rx_power - n0_dbm - rx_nf_db - impl_loss_db
+            results['cn0'] = f"{cn0:.2f} dB-Hz"
             
-            # Grid styling
-            ax.grid(True, which='both', color='#f5f5f5', linewidth=0.5)
-            ax.grid(True, which='major', color='#eeeeee', linewidth=0.8)
+            # Calculate Link Margin
+            bandwidth_hz = params['bandwidth_hz']
+            required_ebno_db = params['required_ebno_db']
             
-            # Set axis limits and labels
-            ax.set_xlim(0, 20)
-            ax.set_ylim(1e-6, 1e0)
-            ax.set_xlabel('Eb/N0 [dB]')
-            ax.set_ylabel('Bit Error Rate (BER)')
+            # Calculate actual Eb/N0
+            ebno = cn0 - 10 * np.log10(bandwidth_hz)
             
-            # Style spines
-            for spine in ax.spines.values():
-                spine.set_color('#dddddd')
-                spine.set_linewidth(0.5)
+            # Calculate margin
+            margin = ebno - required_ebno_db
+            results['link_margin'] = f"{margin:.2f} dB"
             
-            # Set tick parameters
-            ax.tick_params(colors='#666666', grid_color='#eeeeee', grid_alpha=0.8)
-            
-            # Add legend with clean styling
-            legend = ax.legend(loc='lower left', frameon=True, fontsize=9)
-            legend.get_frame().set_facecolor('white')
-            legend.get_frame().set_edgecolor('#dddddd')
-            legend.get_frame().set_linewidth(0.5)
-            
-            # Add current operating point if within range
-            current_ebno = self.get_ebno_value()
-            if 0 <= current_ebno <= 20:
-                current_mod = self.modulation.currentText()
-                current_ebno_linear = 10**(current_ebno/10)
-                
-                if current_mod in ['BPSK', 'QPSK']:
-                    current_ber = 0.5 * erfc(np.sqrt(current_ebno_linear))
-                    color = '#2196F3'
-                else:  # 8-PSK
-                    current_ber = (2/3) * erfc(np.sqrt(3 * current_ebno_linear * np.log2(8) / 8))
-                    color = '#FF9800'
-                
-                ax.plot(current_ebno, current_ber, 'o', color='#E91E63',
-                       markersize=6, label='Operating Point')
-            
-            # Adjust layout
-            self.figure.tight_layout()
-            self.canvas.draw()
+            return results
             
         except Exception as e:
-            print(f"Error in _create_ber_plot: {str(e)}")
-            raise Exception(f"Error creating BER plot: {str(e)}")
-
-    def clear_data_series(self):
-        """Clear all data series from the plot."""
-        self.data_series = []
-        self.figure.clear()
-        self.canvas.draw()
-
-    def plot_link_margin(self, x_values, y_values, x_label, title, label=None):
-        """Plot link margin analysis."""
+            raise Exception(f"Error in link budget calculation: {str(e)}")
+            
+    def _update_real_time(self):
+        """Update real-time plot with current parameters."""
         try:
-            if not hasattr(self, 'current_ax'):
-                self.figure.clear()
-                self.current_ax = self.figure.add_subplot(111)
+            # Get current parameters
+            if not self.parent or not hasattr(self.parent, 'get_parameters'):
+                self.update_timer.stop()
+                raise Exception("Parent view not accessible")
+                
+            params = self.parent.get_parameters()
+            if not params:
+                return
+                
+            # Calculate current margin
+            result = self._calculate_link_budget(params)
+            current_margin = float(result['link_margin'].split()[0])
             
-            line, = self.current_ax.plot(x_values, y_values, linewidth=2, label=label)
-            if label:
-                self.current_ax.legend()
-            
-            self.current_ax.set_xlabel(x_label)
-            self.current_ax.set_ylabel('Link Margin (dB)')
-            self.current_ax.set_title(title)
-            self.current_ax.grid(True)
-            
-            self.canvas.draw()
-            return line
+            # Initialize data arrays if no curves exist
+            if not self.pg_curves:
+                # Create new curve if none exists
+                curve = self.pg_plot.plot(
+                    x=[1],  # Start with first point
+                    y=[current_margin],
+                    pen=pg.mkPen(color='#2196F3', width=2)
+                )
+                self.pg_curves.append(curve)
+            else:
+                # Get existing data
+                curve = self.pg_curves[0]
+                x_data, y_data = curve.getData()
+                
+                if x_data is None or y_data is None:
+                    # Reinitialize data if it's None
+                    x_data = np.array([1])
+                    y_data = np.array([current_margin])
+                else:
+                    # Add new point
+                    x_data = np.append(x_data, len(x_data) + 1)
+                    y_data = np.append(y_data, current_margin)
+                    
+                    # Keep only last 100 points
+                    if len(x_data) > 100:
+                        x_data = x_data[-100:]
+                        y_data = y_data[-100:]
+                
+                # Update the curve with new data
+                curve.setData(x_data, y_data)
             
         except Exception as e:
-            print(f"Error in plot_link_margin: {str(e)}")
-            raise Exception(f"Error plotting link margin: {str(e)}")
-
-    def add_data_series(self, x_data, y_data, label=None):
-        """Add a new data series to the plot."""
-        try:
-            line = self.plot_link_margin(x_data, y_data, '', '', label)
-            self.data_series.append((line, {'x': x_data, 'y': y_data}))
-        except Exception as e:
-            print(f"Error in add_data_series: {str(e)}")
-            raise Exception(f"Error adding data series: {str(e)}")
-
-    def _generate_plot(self):
-        """Generate the selected plot type."""
-        try:
-            self.clear_data_series()
-            plot_type = self.plot_type.currentText()
-            
-            if plot_type == "BER vs Eb/N0 [dB]":
-                self._create_ber_plot()
-            elif plot_type == "Link Margin vs. Distance":
-                self._create_distance_margin_plot()
-            elif plot_type == "Link Margin vs. Frequency":
-                self._create_frequency_margin_plot()
-            
-        except Exception as e:
-            print(f"Error generating plot: {str(e)}")
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
+            # Stop the timer to prevent error spam
+            self.update_timer.stop()
+            QMessageBox.warning(
                 self,
-                "Plot Error",
-                f"Error generating plot: {str(e)}"
+                "Real-time Update Error",
+                f"Error updating real-time plot: {str(e)}\nReal-time updates have been stopped."
             )
-
-    def _setup_grid_and_style(self, ax):
-        """Set up grid lines and plot style."""
-        # Major grid
-        ax.grid(True, which='major', color='#CCCCCC', linestyle='-', linewidth=0.8, alpha=0.5)
-        # Minor grid
-        ax.grid(True, which='minor', color='#DDDDDD', linestyle=':', linewidth=0.5, alpha=0.3)
-        
-        # Enable minor ticks
-        ax.minorticks_on()
-        
-        # Style spines
-        for spine in ax.spines.values():
-            spine.set_color('#666666')
-            spine.set_linewidth(0.8)
-        
-        # Set background color
-        ax.set_facecolor('white')
-        self.figure.patch.set_facecolor('white')
-        
-        # Style tick parameters
-        ax.tick_params(which='major', length=6, width=0.8, colors='#333333')
-        ax.tick_params(which='minor', length=3, width=0.6, colors='#666666')
 
     def _create_distance_margin_plot(self):
         """Create a plot showing link margin vs distance."""
         try:
-            # Clear any existing plots
-            self.clear_data_series()
+            # Clear existing plots
+            self.pg_plot.clear()
+            self.pg_curves.clear()
             
-            # Create subplot with specific size ratio
-            ax = self.figure.add_subplot(111)
-            
-            # Set up grid and style
-            self._setup_grid_and_style(ax)
+            # Set labels
+            self.pg_plot.setLabel('bottom', 'Distance', units='km')
+            self.pg_plot.setLabel('left', 'Link Margin', units='dB')
             
             # Generate distance points (logarithmic scale)
-            distances = np.logspace(0, 4, 200)  # 1 km to 10000 km
+            distances = np.logspace(0, 4, 500)  # 1 km to 10000 km
             margins = []
             
             # Get current parameters from parent view
@@ -528,7 +322,11 @@ class PlotWidget(QWidget):
                         margin = float(result['link_margin'].split()[0])
                         margins.append(margin)
                     except Exception as e:
-                        print(f"Error calculating margin for distance {d}: {str(e)}")
+                        QMessageBox.warning(
+                            self,
+                            "Calculation Error",
+                            f"Error calculating margin for distance {d} km: {str(e)}"
+                        )
                         margins.append(np.nan)
                 
                 # Restore original distance
@@ -539,105 +337,71 @@ class PlotWidget(QWidget):
             # Convert to numpy array for easier handling
             margins = np.array(margins)
             
-            # Plot data with thicker line
-            ax.semilogx(distances, margins, '-', color='#2196F3', 
-                       label=f"Modulation: {self.modulation.currentText()}", 
-                       linewidth=2.0)
+            # Create main curve
+            curve = self.pg_plot.plot(
+                distances, margins,
+                pen=pg.mkPen(color='#2196F3', width=2),
+                name=f"Modulation: {self.modulation.currentText()}"
+            )
+            self.pg_curves.append(curve)
             
             # Add threshold line at 0 dB
-            ax.axhline(y=0, color='#ffcdd2', linestyle='--', linewidth=1.5,
-                      label='Minimum Required Margin')
+            threshold = self.pg_plot.plot(
+                distances, np.zeros_like(distances),
+                pen=pg.mkPen(color='#ffcdd2', width=1.5, style=Qt.PenStyle.DashLine),
+                name='Minimum Required Margin'
+            )
+            self.pg_curves.append(threshold)
             
-            # Set axis limits and labels with larger font
-            ax.set_xlim(distances[0], distances[-1])
-            margin_range = np.nanmax(margins) - np.nanmin(margins)
-            ax.set_ylim(np.nanmin(margins) - 0.1 * margin_range,
-                       np.nanmax(margins) + 0.1 * margin_range)
-            
-            # Larger font sizes
-            ax.set_xlabel('Distance [km]', fontsize=12, labelpad=10)
-            ax.set_ylabel('Link Margin [dB]', fontsize=12, labelpad=10)
-            ax.tick_params(labelsize=10)
-            
-            # Add legend with clean styling and larger font
-            legend = ax.legend(loc='upper right', frameon=True, fontsize=11)
-            legend.get_frame().set_facecolor('white')
-            legend.get_frame().set_edgecolor('#dddddd')
-            legend.get_frame().set_linewidth(0.5)
-            
-            # Add current operating point with larger marker
+            # Add current operating point
             if base_distance >= distances[0] and base_distance <= distances[-1]:
                 current_margin = margins[np.abs(distances - base_distance).argmin()]
-                ax.plot(base_distance, current_margin, 'o', color='#E91E63',
-                       markersize=8, label='Operating Point')
+                point = self.pg_plot.plot(
+                    [base_distance], [current_margin],
+                    pen=None,
+                    symbol='o',
+                    symbolSize=10,
+                    symbolBrush='#E91E63',
+                    name='Operating Point'
+                )
+                self.pg_curves.append(point)
                 
-                # Add annotation for current point with larger font
-                ax.annotate(f'Current: {current_margin:.1f} dB',
-                           xy=(base_distance, current_margin),
-                           xytext=(10, 10), textcoords='offset points',
-                           bbox=dict(facecolor='white', edgecolor='#dddddd',
-                                   alpha=0.8),
-                           fontsize=11)
+                # Add text label for current point
+                text = pg.TextItem(
+                    f'Current: {current_margin:.1f} dB',
+                    color='k',
+                    anchor=(0, 1)
+                )
+                text.setPos(base_distance, current_margin)
+                self.pg_plot.addItem(text)
             
-            # Adjust layout
-            self.figure.tight_layout()
-            self.canvas.draw()
+            # Set log mode for x-axis
+            self.pg_plot.setLogMode(x=True, y=False)
+            
+            # Add legend
+            self.pg_plot.addLegend()
             
         except Exception as e:
-            print(f"Error in _create_distance_margin_plot: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Plot Error",
+                f"Error creating distance margin plot: {str(e)}"
+            )
             raise Exception(f"Error creating distance margin plot: {str(e)}")
-
-    def _calculate_link_budget(self, params):
-        """Calculate link budget for a given set of parameters."""
-        try:
-            # Convert power to dBm if needed
-            power = params['tx_power_dbm']
-            freq = params['frequency_hz']
-            
-            # Calculate free space path loss
-            c = 3e8  # speed of light in m/s
-            d = params['distance_km'] * 1000  # convert km to m
-            fspl = 20 * np.log10(4 * np.pi * d * freq / c)
-            
-            # Calculate received power
-            rx_power = power + params['tx_gain_dbi'] + params['rx_gain_dbi'] - fspl - params['rx_implementation_loss_db']
-            
-            # Calculate noise power
-            k = 1.38e-23  # Boltzmann constant
-            noise_power = 10 * np.log10(k * params['temperature_k'] * params['bandwidth_hz']) + 30  # convert to dBm
-            
-            # Calculate C/N0
-            cn0 = rx_power - noise_power
-            
-            # Calculate link margin
-            link_margin = cn0 - params['required_ebno_db'] - 10 * np.log10(params['bandwidth_hz'])
-            
-            return {
-                'eirp': f"{power + params['tx_gain_dbi']:.1f} dBW",
-                'path_loss': f"{fspl:.1f} dB",
-                'received_power': f"{rx_power:.1f} dBW",
-                'cn0': f"{cn0:.1f} dB-Hz",
-                'link_margin': f"{link_margin:.1f} dB"
-            }
-            
-        except Exception as e:
-            raise Exception(f"Error calculating link budget: {str(e)}")
 
     def _create_frequency_margin_plot(self):
         """Create a plot showing link margin vs frequency."""
         try:
-            # Clear any existing plots
-            self.clear_data_series()
+            # Clear existing plots
+            self.pg_plot.clear()
+            self.pg_curves.clear()
             
-            # Create subplot with specific size ratio
-            ax = self.figure.add_subplot(111)
-            
-            # Set plot style
-            ax.set_facecolor('white')
-            self.figure.patch.set_facecolor('white')
+            # Set labels
+            self.pg_plot.setLabel('bottom', 'Frequency', units='GHz')
+            self.pg_plot.setLabel('left', 'Link Margin', units='dB')
             
             # Generate frequency points (logarithmic scale)
-            frequencies = np.logspace(6, 11, 200)  # 1 MHz to 100 GHz
+            frequencies = np.logspace(6, 11, 500)  # 1 MHz to 100 GHz
             margins = []
             
             # Get current parameters from parent view
@@ -649,12 +413,15 @@ class PlotWidget(QWidget):
                 for f in frequencies:
                     params['frequency_hz'] = f
                     try:
-                        # Calculate link budget for this frequency
                         result = self._calculate_link_budget(params)
                         margin = float(result['link_margin'].split()[0])
                         margins.append(margin)
                     except Exception as e:
-                        print(f"Error calculating margin for frequency {f}: {str(e)}")
+                        QMessageBox.warning(
+                            self,
+                            "Calculation Error",
+                            f"Error calculating margin for frequency {f/1e9:.2f} GHz: {str(e)}"
+                        )
                         margins.append(np.nan)
                 
                 # Restore original frequency
@@ -665,62 +432,189 @@ class PlotWidget(QWidget):
             # Convert to numpy array for easier handling
             margins = np.array(margins)
             
-            # Plot data
-            ax.semilogx(frequencies/1e9, margins, '-', color='#2196F3', 
-                       label=f"Modulation: {self.modulation.currentText()}", 
-                       linewidth=1.5)
+            # Create main curve
+            curve = self.pg_plot.plot(
+                frequencies/1e9, margins,
+                pen=pg.mkPen(color='#2196F3', width=2),
+                name=f"Modulation: {self.modulation.currentText()}"
+            )
+            self.pg_curves.append(curve)
             
             # Add threshold line at 0 dB
-            ax.axhline(y=0, color='#ffcdd2', linestyle='--', linewidth=1,
-                      label='Minimum Required Margin')
-            
-            # Grid styling
-            ax.grid(True, which='both', color='#f5f5f5', linewidth=0.5)
-            ax.grid(True, which='major', color='#eeeeee', linewidth=0.8)
-            
-            # Set axis limits and labels
-            ax.set_xlim(frequencies[0]/1e9, frequencies[-1]/1e9)
-            margin_range = np.nanmax(margins) - np.nanmin(margins)
-            ax.set_ylim(np.nanmin(margins) - 0.1 * margin_range,
-                       np.nanmax(margins) + 0.1 * margin_range)
-            ax.set_xlabel('Frequency [GHz]')
-            ax.set_ylabel('Link Margin [dB]')
-            
-            # Style spines
-            for spine in ax.spines.values():
-                spine.set_color('#dddddd')
-                spine.set_linewidth(0.5)
-            
-            # Set tick parameters
-            ax.tick_params(colors='#666666', grid_color='#eeeeee', grid_alpha=0.8)
-            
-            # Add legend with clean styling
-            legend = ax.legend(loc='upper right', frameon=True, fontsize=9)
-            legend.get_frame().set_facecolor('white')
-            legend.get_frame().set_edgecolor('#dddddd')
-            legend.get_frame().set_linewidth(0.5)
+            threshold = self.pg_plot.plot(
+                frequencies/1e9, np.zeros_like(frequencies),
+                pen=pg.mkPen(color='#ffcdd2', width=1.5, style=Qt.PenStyle.DashLine),
+                name='Minimum Required Margin'
+            )
+            self.pg_curves.append(threshold)
             
             # Add current operating point
-            current_freq = base_freq/1e9  # Convert to GHz for plotting
+            current_freq = base_freq/1e9
             if frequencies[0]/1e9 <= current_freq <= frequencies[-1]/1e9:
                 current_margin = margins[np.abs(frequencies/1e9 - current_freq).argmin()]
-                ax.plot(current_freq, current_margin, 'o', color='#E91E63',
-                       markersize=6, label='Operating Point')
+                point = self.pg_plot.plot(
+                    [current_freq], [current_margin],
+                    pen=None,
+                    symbol='o',
+                    symbolSize=10,
+                    symbolBrush='#E91E63',
+                    name='Operating Point'
+                )
+                self.pg_curves.append(point)
                 
-                # Add annotation for current point
-                ax.annotate(f'Current: {current_margin:.1f} dB',
-                           xy=(current_freq, current_margin),
-                           xytext=(10, 10), textcoords='offset points',
-                           bbox=dict(facecolor='white', edgecolor='#dddddd',
-                                   alpha=0.8))
+                # Add text label for current point
+                text = pg.TextItem(
+                    f'Current: {current_margin:.1f} dB',
+                    color='k',
+                    anchor=(0, 1)
+                )
+                text.setPos(current_freq, current_margin)
+                self.pg_plot.addItem(text)
             
-            # Adjust layout
-            self.figure.tight_layout()
-            self.canvas.draw()
+            # Set log mode for x-axis
+            self.pg_plot.setLogMode(x=True, y=False)
+            
+            # Add legend
+            self.pg_plot.addLegend()
             
         except Exception as e:
-            print(f"Error in _create_frequency_margin_plot: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Plot Error",
+                f"Error creating frequency margin plot: {str(e)}"
+            )
             raise Exception(f"Error creating frequency margin plot: {str(e)}")
+            
+    def _create_ber_plot(self):
+        """Create a plot showing BER vs Eb/N0 with modern styling."""
+        try:
+            # Clear existing plots
+            self.pg_plot.clear()
+            self.pg_curves.clear()
+            
+            # Set labels
+            self.pg_plot.setLabel('bottom', 'Eb/N0', units='dB')
+            self.pg_plot.setLabel('left', 'Bit Error Rate (BER)')
+            
+            # Generate Eb/N0 points
+            eb_n0_db = np.linspace(0, 20, 500)
+            eb_n0_linear = 10**(eb_n0_db/10)
+            
+            # Calculate BER for each modulation scheme
+            ber_bpsk_qpsk = 0.5 * erfc(np.sqrt(eb_n0_linear))
+            ber_8psk = (2/3) * erfc(np.sqrt(3 * eb_n0_linear * np.log2(8) / 8))
+            
+            # Create curves
+            curve1 = self.pg_plot.plot(
+                eb_n0_db, ber_bpsk_qpsk,
+                pen=pg.mkPen(color='#2196F3', width=2),
+                name='BPSK/QPSK'
+            )
+            curve2 = self.pg_plot.plot(
+                eb_n0_db, ber_8psk,
+                pen=pg.mkPen(color='#FF9800', width=2),
+                name='8-PSK'
+            )
+            self.pg_curves.extend([curve1, curve2])
+            
+            # Add threshold lines
+            threshold1 = self.pg_plot.plot(
+                eb_n0_db, np.full_like(eb_n0_db, 1e-3),
+                pen=pg.mkPen(color='#ffcdd2', width=1.5, style=Qt.PenStyle.DashLine)
+            )
+            threshold2 = self.pg_plot.plot(
+                eb_n0_db, np.full_like(eb_n0_db, 1e-5),
+                pen=pg.mkPen(color='#c8e6c9', width=1.5, style=Qt.PenStyle.DashLine)
+            )
+            self.pg_curves.extend([threshold1, threshold2])
+            
+            # Add current operating point if within range
+            current_ebno = self.get_ebno_value()
+            if 0 <= current_ebno <= 20:
+                current_mod = self.modulation.currentText()
+                current_ebno_linear = 10**(current_ebno/10)
+                
+                if current_mod in ['BPSK', 'QPSK']:
+                    current_ber = 0.5 * erfc(np.sqrt(current_ebno_linear))
+                    color = '#2196F3'
+                else:  # 8-PSK
+                    current_ber = (2/3) * erfc(np.sqrt(3 * current_ebno_linear * np.log2(8) / 8))
+                    color = '#FF9800'
+                
+                point = self.pg_plot.plot(
+                    [current_ebno], [current_ber],
+                    pen=None,
+                    symbol='o',
+                    symbolSize=10,
+                    symbolBrush='#E91E63',
+                    name='Operating Point'
+                )
+                self.pg_curves.append(point)
+                
+                # Add text label for current point
+                text = pg.TextItem(
+                    f'Current: {current_ber:.1e}',
+                    color='k',
+                    anchor=(0, 1)
+                )
+                text.setPos(current_ebno, current_ber)
+                self.pg_plot.addItem(text)
+            
+            # Set log mode for y-axis
+            self.pg_plot.setLogMode(x=False, y=True)
+            
+            # Set axis ranges
+            self.pg_plot.setXRange(0, 20)
+            self.pg_plot.setYRange(1e-6, 1)
+            
+            # Add legend
+            self.pg_plot.addLegend()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Plot Error",
+                f"Error creating BER plot: {str(e)}"
+            )
+            raise Exception(f"Error creating BER plot: {str(e)}")
+            
+    def clear_data_series(self):
+        """Clear all data series from the plot."""
+        self.pg_plot.clear()
+        self.pg_curves.clear()
+
+    def get_ebno_value(self):
+        """Get Eb/N0 value from parent view."""
+        if self.parent and hasattr(self.parent, 'ebno'):
+            return self.parent.ebno.value()
+        return 10.0  # Default value if not available
+
+    def _generate_plot(self):
+        """Generate the selected plot type."""
+        try:
+            # Stop the real-time update timer while generating plots
+            self.update_timer.stop()
+            
+            plot_type = self.plot_type.currentText()
+            
+            if plot_type == "BER vs Eb/N0 [dB]":
+                self._create_ber_plot()
+            elif plot_type == "Link Margin vs. Distance":
+                self._create_distance_margin_plot()
+            elif plot_type == "Link Margin vs. Frequency":
+                self._create_frequency_margin_plot()
+                
+            # Restart the timer after plot generation
+            self.update_timer.start()
+            
+        except Exception as e:
+            # Keep the timer stopped if there was an error
+            self.update_timer.stop()
+            QMessageBox.critical(
+                self,
+                "Plot Error",
+                f"Error generating plot: {str(e)}\nReal-time updates have been stopped."
+            )
 
 class LinkBudgetView(QWidget):
     # Signals
@@ -947,9 +841,6 @@ class LinkBudgetView(QWidget):
         self.plot_widget = PlotWidget(self)  # Pass self as parent
         analysis_layout.addWidget(self.plot_widget)
         
-        # Connect the plot button to the PlotWidget's generate method
-        self.plot_widget.plot_button.clicked.connect(self.plot_widget._generate_plot)
-
         # Add tabs
         self.tab_widget.addTab(params_tab, "Parameter Results")
         self.tab_widget.addTab(analysis_tab, "Link Margin Analysis")
@@ -975,6 +866,21 @@ class LinkBudgetView(QWidget):
             }
         """)
 
+        self.plot_button = QPushButton("Plot Graph")
+        self.plot_button.setFixedHeight(40)
+        self.plot_button.setStyleSheet("""
+            QPushButton {
+                background: #FF9800;
+                border-radius: 6px;
+                color: white;
+                font: 700 14pt 'Inter';
+                padding: 0 24px;
+            }
+            QPushButton:hover {
+                background: #FFA726;
+            }
+        """)
+
         self.pdf_button = QPushButton("Generate PDF Report")
         self.pdf_button.setFixedHeight(40)
         self.pdf_button.setStyleSheet("""
@@ -992,6 +898,7 @@ class LinkBudgetView(QWidget):
 
         btns.addStretch()
         btns.addWidget(self.calculate_button)
+        btns.addWidget(self.plot_button)
         btns.addWidget(self.pdf_button)
         btns.addStretch()
 
@@ -1004,12 +911,11 @@ class LinkBudgetView(QWidget):
         # Connect calculate button
         self.calculate_button.clicked.connect(self._on_calculate)
         
+        # Connect plot button
+        self.plot_button.clicked.connect(self._on_plot)
+        
         # Connect PDF button
         self.pdf_button.clicked.connect(self._on_generate_pdf)
-        
-        # Connect plot button
-        if hasattr(self, 'plot_widget'):
-            self.plot_widget.plot_button.clicked.connect(self.plot_widget._generate_plot)
 
     def setup_connections(self):
         """Set up signal/slot connections for calculations and UI updates."""
@@ -1019,20 +925,20 @@ class LinkBudgetView(QWidget):
             self.freq_unit.currentTextChanged.connect(self._on_freq_unit_changed)
             
         except Exception as e:
-            print(f"Error in setup_connections: {str(e)}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Setup Error",
+                f"Error setting up connections: {str(e)}"
+            )
 
     def _on_calculate(self):
         """Handle calculate button click."""
         try:
-            print("Calculate button clicked")
             params = self.get_parameters()
-            print(f"Parameters collected in view: {params}")
             if params:
-                print("Emitting calculate_clicked signal")
                 self.calculate_clicked.emit(params)
-                print("Signal emitted")
         except Exception as e:
-            print(f"Error in _on_calculate: {str(e)}")
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self,
@@ -1043,12 +949,10 @@ class LinkBudgetView(QWidget):
     def _on_generate_pdf(self):
         """Handle generate PDF button click."""
         try:
-            print("Generate PDF button clicked")
             params = self.get_parameters()
             if params:
                 self.generate_pdf_clicked.emit(params)
         except Exception as e:
-            print(f"Error in _on_generate_pdf: {str(e)}")
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(
                 self,
@@ -1072,7 +976,12 @@ class LinkBudgetView(QWidget):
                 self.tx_power.setValue(new_value)
             
         except Exception as e:
-            print(f"Error in _on_power_unit_changed: {str(e)}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Conversion Error",
+                f"Error converting power units: {str(e)}"
+            )
             
     def _on_freq_unit_changed(self, unit):
         """Convert frequency value between MHz and GHz."""
@@ -1085,12 +994,31 @@ class LinkBudgetView(QWidget):
                 self.freq.setValue(current_value * 1000)
             
         except Exception as e:
-            print(f"Error in _on_freq_unit_changed: {str(e)}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Conversion Error",
+                f"Error converting frequency units: {str(e)}"
+            )
+
+    def _on_plot(self):
+        """Handle plot button click."""
+        try:
+            # Switch to the Link Margin Analysis tab
+            self.tab_widget.setCurrentIndex(1)
+            # Generate the plot
+            self.plot_widget._generate_plot()
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                self,
+                "Plot Error",
+                f"Error generating plot: {str(e)}"
+            )
 
     def get_parameters(self):
         """Get all parameter values as a dictionary."""
         try:
-            print("Getting parameters in view...")
             # Convert power to dBm if needed
             power = self.tx_power.value()
             if self.tx_power_unit.currentText() == "W":
@@ -1103,7 +1031,7 @@ class LinkBudgetView(QWidget):
             else:  # MHz
                 freq *= 1e6
                 
-            params = {
+            return {
                 'tx_power_dbm': power,
                 'tx_gain_dbi': self.tx_gain.value(),
                 'rx_gain_dbi': self.rx_gain.value(),
@@ -1115,11 +1043,8 @@ class LinkBudgetView(QWidget):
                 'bandwidth_hz': self.bw.value(),
                 'required_ebno_db': self.ebno.value()
             }
-            print(f"Parameters collected: {params}")
-            return params
             
         except Exception as e:
-            print(f"Error in get_parameters: {str(e)}")
             return None
 
     def resizeEvent(self, e):
@@ -1177,12 +1102,9 @@ class LinkBudgetView(QWidget):
     def update_results(self, result):
         """Update the view with calculation results."""
         try:
-            print(f"Updating results in view with: {result}")
             for key, value in result.items():
                 if key in self.result_labels:
-                    # Check for valid numeric values
                     try:
-                        # Extract numeric value from the string (e.g., "39.0 dBW" -> 39.0)
                         numeric_value = float(value.split()[0])
                         if math.isnan(numeric_value) or math.isinf(numeric_value):
                             self.result_labels[key].setText("Invalid")
@@ -1213,7 +1135,6 @@ class LinkBudgetView(QWidget):
             QApplication.processEvents()
             
         except Exception as e:
-            print(f"Error in update_results: {str(e)}")
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
@@ -1292,7 +1213,6 @@ class LinkBudgetView(QWidget):
                 self.recommendations_label.setText("")  # Hide recommendations if none are needed
 
         except Exception as e:
-            print(f"Error updating recommendations: {str(e)}")
             self.recommendations_label.setText("""
                 <p style='color: palette(text);'>
                     Unable to generate recommendations. Please ensure all values are properly calculated.
@@ -1318,7 +1238,12 @@ class LinkBudgetView(QWidget):
             )
             return file_path
         except Exception as e:
-            print(f"Error getting save filename: {str(e)}")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "File Dialog Error",
+                f"Error opening file dialog: {str(e)}"
+            )
             return None
 
     def show_report_success(self, filepath):

@@ -108,9 +108,10 @@ class DataBudgetView(QWidget):
         layout.addLayout(button_layout)
         
     def calculate(self):
+        
         """Calculate data budget and update UI."""
         try:
-            # Get input values
+            # Get the input values
             data_rate = float(self.data_rate_input.text()) * 1e6  # Convert to bps
             duty_cycle = float(self.duty_cycle_input.text())
             downlink_rate = float(self.downlink_rate_input.text()) * 1e6  # Convert to bps
@@ -118,7 +119,7 @@ class DataBudgetView(QWidget):
             storage_capacity = float(self.storage_capacity_input.text())
             current_storage = float(self.current_storage_input.text())
             
-            # Calculate results
+            # Calculate the results
             result = self.calculator.calculate(
                 data_rate=data_rate,
                 duty_cycle=duty_cycle,

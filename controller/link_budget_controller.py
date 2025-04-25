@@ -36,6 +36,10 @@ class LinkBudgetController(QObject):
         self.report_generated.connect(self._view.show_report_success)
     
     def calculate_link_budget(self) -> None:
+                
+        #Core function for link budget calculations including free space loss,
+        # received power, noise power, SNR, and link margin
+
         """Calculate link budget and update view."""
         try:
             print("Starting link budget calculation...")
@@ -114,7 +118,7 @@ class LinkBudgetController(QObject):
     def generate_pdf_report(self):
         """Generate PDF report with link budget results."""
         try:
-            # Get current parameters and results
+            # Get the current parameters and the results from the last calculations
             view_params = self._get_parameters_from_view()
             
             # Map view parameters to model parameters (same as in calculate_link_budget)
@@ -133,12 +137,12 @@ class LinkBudgetController(QObject):
             self._model.set_parameters(params)
             result = self._model.calculate()
 
-            # Get save location from view
+            
             file_path = self._view.get_save_filename()
             if not file_path:
                 return
 
-            # Ensure file has .pdf extension
+            # we ensure the file has a .pdf extension
             if not file_path.lower().endswith('.pdf'):
                 file_path += '.pdf'
 
@@ -149,7 +153,7 @@ class LinkBudgetController(QObject):
             from reportlab.lib.units import inch
             from datetime import datetime
 
-            # Create PDF document
+            # Create the PDF document
             doc = SimpleDocTemplate(file_path, pagesize=letter)
             styles = getSampleStyleSheet()
             elements = []

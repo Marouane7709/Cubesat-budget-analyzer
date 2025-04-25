@@ -22,8 +22,8 @@ class LinkBudgetModel:
             'transmit_antenna_gain': 0.0,
             'receive_antenna_gain': 0.0,
             'frequency': 0.0,
-            'distance': 0.0,
-            'system_temperature': 0.0,
+            'distance': 5000.0,
+            'system_temperature': 290.0,
             'receiver_bandwidth': 0.0,
             'required_snr': 0.0,
             'atmospheric_loss': 0.0
@@ -94,7 +94,7 @@ class LinkBudgetModel:
     def _get_status_and_recommendations(self, link_margin: float) -> Tuple[str, List[str]]:
         """Get link status and improvement recommendations."""
         if link_margin >= 0:
-            return "✅ Link margin sufficient — stable connection expected", []
+            return " Link margin sufficient — stable connection expected", []
         
         required_improvement = abs(link_margin)
         hints = ["To improve the link:"]
@@ -106,7 +106,7 @@ class LinkBudgetModel:
         if self._parameters['distance'] > 1000:
             hints.append(f"• Reduce link distance by {self._parameters['distance'] * 0.1:.0f} km")
         
-        return "⚠️ Negative link margin — connection unstable", hints
+        return " Negative link margin — connection unstable", hints
     
     def calculate_margin_vs_parameter(self, param_type: str, value: float, modulation: str = None) -> float:
         """Calculate link margin for different parameters."""
