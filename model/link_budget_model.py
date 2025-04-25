@@ -60,15 +60,18 @@ class LinkBudgetModel:
     
     def _validate_inputs(self) -> None:
         """Validate input parameters."""
-        if all(v == 0 for v in self._parameters.values()):
-            raise ValueError("All input values are zero. Please enter valid values.")
-        if self._parameters['frequency'] == 0:
-            raise ValueError("Frequency cannot be zero.")
-        if self._parameters['distance'] == 0:
-            raise ValueError("Free Space Path Loss cannot be zero.")
+        essential_params = ['frequency', 'distance', 'transmit_power']
+        if all(self._parameters[param] == 0 for param in essential_params):
+            raise ValueError("Essential parameters (frequency, distance, transmit power) cannot all be zero.")
+        if self._parameters['frequency'] <= 0:
+            raise ValueError("Frequency must be greater than zero.")
+        if self._parameters['distance'] <= 0:
+            raise ValueError("Distance must be greater than zero.")
     
     def _calculate_free_space_loss(self) -> float:
         """Calculate free space path loss."""
+        if self._parameters['frequency'] <= 0 or self._parameters['distance'] <= 0:
+            return 0.0
         wavelength = 3e8 / (self._parameters['frequency'] * 1e9)
         return 20 * np.log10(4 * np.pi * self._parameters['distance'] * 1000 / wavelength)
     
@@ -84,6 +87,8 @@ class LinkBudgetModel:
     
     def _calculate_noise_power(self) -> float:
         """Calculate noise power."""
+        if self._parameters['system_temperature'] <= 0 or self._parameters['receiver_bandwidth'] <= 0:
+            return 0.0
         return -228.6 + 10 * np.log10(self._parameters['system_temperature']) + \
                10 * np.log10(self._parameters['receiver_bandwidth'] * 1e6)
     

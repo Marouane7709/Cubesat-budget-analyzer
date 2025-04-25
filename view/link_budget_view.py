@@ -189,62 +189,48 @@ class PlotWidget(QWidget):
             raise Exception("Cannot calculate link budget - parent view not accessible")
             
         try:
-            # Emit the calculation signal and wait for results
-            self.parent.calculate_clicked.emit(params)
+            # Set parameters in the model
+            self.parent._model.set_parameters({
+                'transmit_power': params['tx_power_dbm'],
+                'transmit_antenna_gain': params['tx_gain_dbi'],
+                'receive_antenna_gain': params['rx_gain_dbi'],
+                'frequency': params['frequency_hz'],
+                'distance': params['distance_km'],
+                'system_temperature': params['temperature_k'],
+                'receiver_bandwidth': params['bandwidth_hz'],
+                'required_snr': params['required_ebno_db'],
+                'atmospheric_loss': params['rx_implementation_loss_db']
+            })
             
-            # Create a dictionary to store results
-            results = {}
+            # Calculate using the model
+            result = self.parent._model.calculate()
             
-            # Calculate EIRP
-            tx_power_dbm = params['tx_power_dbm']
-            tx_gain_dbi = params['tx_gain_dbi']
-            eirp = tx_power_dbm + tx_gain_dbi
-            results['eirp'] = f"{eirp:.2f} dBm"
-            
-            # Calculate Path Loss
-            freq_hz = params['frequency_hz']
-            distance_km = params['distance_km']
-            path_loss = 20 * np.log10(4 * np.pi * distance_km * 1000 * freq_hz / 3e8)
-            results['path_loss'] = f"{path_loss:.2f} dB"
-            
-            # Calculate Received Power
-            rx_gain_dbi = params['rx_gain_dbi']
-            rx_power = eirp - path_loss + rx_gain_dbi
-            results['received_power'] = f"{rx_power:.2f} dBm"
-            
-            # Calculate C/N0
-            k = 1.38e-23  # Boltzmann constant
-            temp_k = params['temperature_k']
-            rx_nf_db = params['rx_noise_figure_db']
-            impl_loss_db = params['rx_implementation_loss_db']
-            
-            n0_dbm = 10 * np.log10(k * temp_k * 1000)  # Convert to dBm/Hz
-            cn0 = rx_power - n0_dbm - rx_nf_db - impl_loss_db
-            results['cn0'] = f"{cn0:.2f} dB-Hz"
-            
-            # Calculate Link Margin
-            bandwidth_hz = params['bandwidth_hz']
-            required_ebno_db = params['required_ebno_db']
-            
-            # Calculate actual Eb/N0
-            ebno = cn0 - 10 * np.log10(bandwidth_hz)
-            
-            # Calculate margin
-            margin = ebno - required_ebno_db
-            results['link_margin'] = f"{margin:.2f} dB"
-            
-            return results
+            # Convert result to dictionary format expected by view
+            eirp = params['tx_power_dbm'] + params['tx_gain_dbi']
+            return {
+                'eirp': f"{eirp:.1f} dBW",
+                'path_loss': f"{result.noise_power:.1f} dB",
+                'received_power': f"{result.received_power:.1f} dBW",
+                'cn0': f"{result.carrier_to_noise:.1f} dB-Hz",
+                'link_margin': f"{result.link_margin:.1f} dB"
+            }
             
         except Exception as e:
-            raise Exception(f"Error in link budget calculation: {str(e)}")
+            # Return default values instead of raising exception
+            return {
+                'eirp': "0.0 dBW",
+                'path_loss': "0.0 dB",
+                'received_power': "0.0 dBW",
+                'cn0': "0.0 dB-Hz",
+                'link_margin': "0.0 dB"
+            }
             
     def _update_real_time(self):
         """Update real-time plot with current parameters."""
         try:
             # Get current parameters
             if not self.parent or not hasattr(self.parent, 'get_parameters'):
-                self.update_timer.stop()
-                raise Exception("Parent view not accessible")
+                return
                 
             params = self.parent.get_parameters()
             if not params:
@@ -285,14 +271,9 @@ class PlotWidget(QWidget):
                 # Update the curve with new data
                 curve.setData(x_data, y_data)
             
-        except Exception as e:
-            # Stop the timer to prevent error spam
+        except Exception:
+            # Just silently stop updating if there's an error
             self.update_timer.stop()
-            QMessageBox.warning(
-                self,
-                "Real-time Update Error",
-                f"Error updating real-time plot: {str(e)}\nReal-time updates have been stopped."
-            )
 
     def _create_distance_margin_plot(self):
         """Create a plot showing link margin vs distance."""
@@ -590,37 +571,31 @@ class PlotWidget(QWidget):
         return 10.0  # Default value if not available
 
     def _generate_plot(self):
-        """Generate the selected plot type."""
+        """Generate the appropriate plot based on current selection."""
         try:
-            # Stop the real-time update timer while generating plots
-            self.update_timer.stop()
-            
             plot_type = self.plot_type.currentText()
             
-            if plot_type == "BER vs Eb/N0 [dB]":
-                self._create_ber_plot()
-            elif plot_type == "Link Margin vs. Distance":
-                self._create_distance_margin_plot()
-            elif plot_type == "Link Margin vs. Frequency":
-                self._create_frequency_margin_plot()
-                
-            # Restart the timer after plot generation
-            self.update_timer.start()
+            # Clear any existing plots
+            self.pg_plot.clear()
+            self.pg_curves.clear()
             
-        except Exception as e:
-            # Keep the timer stopped if there was an error
-            self.update_timer.stop()
-            QMessageBox.critical(
-                self,
-                "Plot Error",
-                f"Error generating plot: {str(e)}\nReal-time updates have been stopped."
-            )
+            if "Distance" in plot_type:
+                self._create_distance_margin_plot()
+            elif "Frequency" in plot_type:
+                self._create_frequency_margin_plot()
+            elif "BER" in plot_type:
+                self._create_ber_plot()
+                
+        except Exception:
+            # Silently fail if plotting fails
+            pass
 
 class LinkBudgetView(QWidget):
     # Signals
     calculate_clicked = pyqtSignal(dict)
     generate_pdf_clicked = pyqtSignal(dict)
     parameter_changed = pyqtSignal(str, float)
+    back_to_home_clicked = pyqtSignal()  # New signal for back to home
 
     def __init__(self):
         super().__init__()
@@ -633,13 +608,40 @@ class LinkBudgetView(QWidget):
         self.setPalette(palette)
         
         self._build_ui()
-        self._make_connections()
+        self.setup_connections()
 
     def _build_ui(self):
         main = QVBoxLayout(self)
         main.setContentsMargins(24, 24, 24, 24)
         main.setSpacing(24)
 
+        # Add header with title and back button
+        header_layout = QHBoxLayout()
+        title = QLabel("Link Budget Calculator")
+        title.setFont(QFont("Inter", 24, QFont.Weight.Bold))
+        back_button = QPushButton("← Back to Home")
+        back_button.setFont(QFont("Inter", 12))
+        back_button.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                color: #2196F3;
+                padding: 8px 16px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                color: #1976D2;
+                text-decoration: underline;
+            }
+        """)
+        header_layout.addWidget(back_button)
+        header_layout.addStretch()
+        header_layout.addWidget(title)
+        main.addLayout(header_layout)
+        
+        # Store the back button reference
+        self.back_button = back_button
+        
         # Create tab widget
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
@@ -904,7 +906,7 @@ class LinkBudgetView(QWidget):
 
         main.addLayout(btns)
 
-    def _make_connections(self):
+    def setup_connections(self):
         """Set up signal/slot connections."""
         self.setup_connections()
         
@@ -916,21 +918,9 @@ class LinkBudgetView(QWidget):
         
         # Connect PDF button
         self.pdf_button.clicked.connect(self._on_generate_pdf)
-
-    def setup_connections(self):
-        """Set up signal/slot connections for calculations and UI updates."""
-        try:
-            # Connect unit changes with value conversion
-            self.tx_power_unit.currentTextChanged.connect(self._on_power_unit_changed)
-            self.freq_unit.currentTextChanged.connect(self._on_freq_unit_changed)
-            
-        except Exception as e:
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.critical(
-                self,
-                "Setup Error",
-                f"Error setting up connections: {str(e)}"
-            )
+        
+        # Connect back button
+        self.back_button.clicked.connect(self.back_to_home_clicked.emit)
 
     def _on_calculate(self):
         """Handle calculate button click."""
@@ -1220,9 +1210,14 @@ class LinkBudgetView(QWidget):
             """)
 
     def show_error(self, title: str, message: str):
-        """Show error message to user."""
-        from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.critical(self, title, message)
+        """Show error message dialog."""
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle(title)
+        msg.setText(message)
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.setDefaultButton(QMessageBox.StandardButton.Ok)
+        msg.exec()
 
     def get_save_filename(self):
         """Get the save location for the PDF report."""

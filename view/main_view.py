@@ -2,9 +2,11 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                             QTabWidget, QMenuBar, QMenu, QStatusBar,
                             QMessageBox, QFileDialog, QPushButton, QStackedWidget)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont
 from view.link_budget_view import LinkBudgetView
 from view.data_budget_view import DataBudgetView
 from controller.link_budget_controller import LinkBudgetController
+from controller.data_budget_controller import DataBudgetController
 from model.link_budget_model import LinkBudgetModel
 from model.database import session
 from model.project import Project
@@ -40,7 +42,7 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Setup the main window UI components."""
         self.setWindowTitle("CubeSat Budget Analyzer")
-        self.setMinimumSize(1200, 800)  # Increased minimum size
+        self.setMinimumSize(1200, 800)
         self.showMaximized()
         
         # Create central widget and layout
@@ -56,16 +58,14 @@ class MainWindow(QMainWindow):
         # Create main content area
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-        content_layout.setSpacing(0)  # Remove spacing
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
         
         # Create stacked widget for different views
         self.stacked_widget = QStackedWidget()
-        content_layout.addWidget(self.stacked_widget)
         
         # Initialize views and controllers
         self.link_budget_view = LinkBudgetView()
-        self.data_budget_view = DataBudgetView()
         
         # Create model and controller for link budget
         self.link_budget_model = LinkBudgetModel()
@@ -74,29 +74,16 @@ class MainWindow(QMainWindow):
             view=self.link_budget_view
         )
         
+        # Create controller for data budget
+        self.data_budget_controller = DataBudgetController()
+        self.data_budget_view = self.data_budget_controller.get_view()
+        
         # Add views to stacked widget
         self.stacked_widget.addWidget(self.link_budget_view)
         self.stacked_widget.addWidget(self.data_budget_view)
         
-        # Add content widget to main layout
+        content_layout.addWidget(self.stacked_widget)
         layout.addWidget(content_widget)
-        
-        # Create bottom navigation
-        nav_widget = QWidget()
-        nav_widget.setObjectName("bottom_nav")
-        nav_layout = QHBoxLayout(nav_widget)
-        nav_layout.setContentsMargins(16, 8, 16, 8)
-        nav_layout.setSpacing(8)
-        
-        # Back button
-        self.back_button = QPushButton("Back to Home")
-        self.back_button.setObjectName("back_button")
-        self.back_button.clicked.connect(self.go_back_to_home)
-        self.back_button.setFixedHeight(40)
-        nav_layout.addWidget(self.back_button)
-        nav_layout.addStretch()
-        
-        layout.addWidget(nav_widget)
         
         # Create status bar
         self.status_bar = QStatusBar()
@@ -329,7 +316,7 @@ class MainWindow(QMainWindow):
             elif module_name == "data_budget":
                 self.stacked_widget.setCurrentWidget(self.data_budget_view)
                 self.setWindowTitle("Data Budget Analysis - CubeSat Budget Analyzer")
-                
+            
             self.status_bar.showMessage(f"Switched to {module_name.replace('_', ' ').title()}")
             
         except Exception as e:

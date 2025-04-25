@@ -1,249 +1,209 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-                            QLabel, QLineEdit, QComboBox, QPushButton,
-                            QGroupBox, QTableWidget, QTableWidgetItem,
-                            QMessageBox, QFileDialog, QTextEdit)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QDoubleValidator
-import pyqtgraph as pg
-import pandas as pd
-from model.data_budget import DataBudgetCalculator
-import os
-from pathlib import Path
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QLabel, QPushButton, QDoubleSpinBox, QMessageBox,
+    QGroupBox, QFrame
+)
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QPalette, QColor
+
+class MetricCard(QFrame):
+    def __init__(self, title: str, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet("""
+            QFrame {
+                background: palette(Base);
+                border-radius: 6px;
+                padding: 12px;
+            }
+            QLabel[class="metric_title"] {
+                font: 11pt "Inter";
+                color: palette(PlaceholderText);
+            }
+            QLabel[class="metric_value"] {
+                font: 700 18pt "Inter";
+                color: palette(Link);
+            }
+            QLabel[class="metric_unit"] {
+                font: 10pt "Inter";
+                color: palette(PlaceholderText);
+            }
+        """)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(4)
+        
+        self.title = QLabel(title)
+        self.title.setProperty("class", "metric_title")
+        self.value = QLabel("--")
+        self.value.setProperty("class", "metric_value")
+        self.unit = QLabel("GB/day")
+        self.unit.setProperty("class", "metric_unit")
+        
+        layout.addWidget(self.title)
+        layout.addWidget(self.value)
+        layout.addWidget(self.unit)
 
 class DataBudgetView(QWidget):
+    # Signals
+    calculate_clicked = pyqtSignal(dict)
+    parameter_changed = pyqtSignal(str, float)
+    
     def __init__(self):
         super().__init__()
-        self.calculator = DataBudgetCalculator()
-        self.setup_ui()
+        self._build_ui()
+        self._make_connections()
+    
+    def _build_ui(self):
+        """Build the user interface."""
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setSpacing(24)
         
-    def setup_ui(self):
-        """Setup the data budget UI components."""
-        layout = QVBoxLayout(self)
+        # Input Parameters Section
+        params_group = QGroupBox("Data Budget Parameters")
+        params_group.setFont(QFont("Inter", 14, QFont.Weight.Bold))
+        params_layout = QGridLayout()
+        params_layout.setColumnMinimumWidth(1, 150)
+        params_layout.setHorizontalSpacing(16)
+        params_layout.setVerticalSpacing(16)
         
-        # Input form
-        input_group = QGroupBox("Data Budget Parameters")
-        form_layout = QFormLayout()
+        # Create input fields
+        self.payload_rate = self._create_input_field("Payload Data Rate (Mbps):", 0, 1000)
+        self.storage_capacity = self._create_input_field("Storage Capacity (GB):", 0, 10000)
+        self.downlink_rate = self._create_input_field("Downlink Rate (Mbps):", 0, 1000)
+        self.pass_duration = self._create_input_field("Pass Duration (minutes):", 0, 60)
+        self.passes_per_day = self._create_input_field("Passes per Day:", 0, 24)
         
-        # Data rate input
-        self.data_rate_input = QLineEdit()
-        self.data_rate_input.setValidator(QDoubleValidator(0.0, 1000.0, 1))
-        self.data_rate_input.setText("1.0")  # Default 1 Mbps
-        form_layout.addRow("Data Rate (Mbps):", self.data_rate_input)
+        # Add fields to layout
+        fields = [
+            (0, "Payload Data Rate (Mbps):", self.payload_rate),
+            (1, "Storage Capacity (GB):", self.storage_capacity),
+            (2, "Downlink Rate (Mbps):", self.downlink_rate),
+            (3, "Pass Duration (minutes):", self.pass_duration),
+            (4, "Passes per Day:", self.passes_per_day)
+        ]
         
-        # Duty cycle input
-        self.duty_cycle_input = QLineEdit()
-        self.duty_cycle_input.setValidator(QDoubleValidator(0.0, 100.0, 1))
-        self.duty_cycle_input.setText("100.0")  # Default 100%
-        form_layout.addRow("Duty Cycle (%):", self.duty_cycle_input)
+        for row, label_text, widget in fields:
+            label = QLabel(label_text)
+            label.setFont(QFont("Inter", 11))
+            params_layout.addWidget(label, row, 0)
+            params_layout.addWidget(widget, row, 1)
         
-        # Downlink parameters
-        self.downlink_rate_input = QLineEdit()
-        self.downlink_rate_input.setValidator(QDoubleValidator(0.0, 1000.0, 1))
-        self.downlink_rate_input.setText("10.0")  # Default 10 Mbps
-        form_layout.addRow("Downlink Rate (Mbps):", self.downlink_rate_input)
+        params_group.setLayout(params_layout)
+        main_layout.addWidget(params_group)
         
-        self.downlink_duration_input = QLineEdit()
-        self.downlink_duration_input.setValidator(QDoubleValidator(0.0, 24.0, 1))
-        self.downlink_duration_input.setText("4.0")  # Default 4 hours
-        form_layout.addRow("Downlink Duration (hours/day):", self.downlink_duration_input)
+        # Results Section
+        results_layout = QHBoxLayout()
         
-        # Storage parameters
-        self.storage_capacity_input = QLineEdit()
-        self.storage_capacity_input.setValidator(QDoubleValidator(0.0, 10000.0, 1))
-        self.storage_capacity_input.setText("1000.0")  # Default 1000 MB
-        form_layout.addRow("Storage Capacity (MB):", self.storage_capacity_input)
+        # Create metric cards
+        self.data_generated = MetricCard("Data Generated")
+        self.downlink_capacity = MetricCard("Downlink Capacity")
+        self.storage_backlog = MetricCard("Storage Backlog")
         
-        self.current_storage_input = QLineEdit()
-        self.current_storage_input.setValidator(QDoubleValidator(0.0, 10000.0, 1))
-        self.current_storage_input.setText("0.0")  # Default 0 MB
-        form_layout.addRow("Current Storage (MB):", self.current_storage_input)
+        results_layout.addWidget(self.data_generated)
+        results_layout.addWidget(self.downlink_capacity)
+        results_layout.addWidget(self.storage_backlog)
         
-        input_group.setLayout(form_layout)
-        layout.addWidget(input_group)
+        main_layout.addLayout(results_layout)
         
-        # Results table
-        self.results_table = QTableWidget()
-        self.results_table.setColumnCount(2)
-        self.results_table.setHorizontalHeaderLabels(["Parameter", "Value"])
-        self.results_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.results_table)
+        # Status and Recommendations
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet("font: 12pt 'Inter'; color: palette(Text);")
+        self.recommendations_label = QLabel()
+        self.recommendations_label.setStyleSheet("font: 11pt 'Inter'; color: palette(Text);")
+        self.recommendations_label.setWordWrap(True)
         
-        # Recommendations
-        self.recommendations_text = QTextEdit()
-        self.recommendations_text.setReadOnly(True)
-        layout.addWidget(self.recommendations_text)
+        main_layout.addWidget(self.status_label)
+        main_layout.addWidget(self.recommendations_label)
         
-        # Charts
-        chart_layout = QHBoxLayout()
+        # Calculate Button
+        self.calculate_button = QPushButton("Calculate Data Budget")
+        self.calculate_button.setFont(QFont("Inter", 12))
+        self.calculate_button.setMinimumHeight(40)
+        self.calculate_button.setStyleSheet("""
+            QPushButton {
+                background: palette(Button);
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background: palette(Highlight);
+                color: palette(BrightText);
+            }
+        """)
         
-        self.storage_chart = pg.PlotWidget()
-        self.storage_chart.setTitle("Storage Usage")
-        self.storage_chart.setLabel('left', 'Storage (MB)')
-        self.storage_chart.setLabel('bottom', 'Time (days)')
-        chart_layout.addWidget(self.storage_chart)
+        main_layout.addWidget(self.calculate_button)
+        main_layout.addStretch()
+    
+    def _create_input_field(self, label: str, min_val: float, max_val: float) -> QDoubleSpinBox:
+        """Create a styled input field."""
+        field = QDoubleSpinBox()
+        field.setRange(min_val, max_val)
+        field.setDecimals(2)
+        field.setFont(QFont("Inter", 11))
+        field.setMinimumHeight(36)
+        field.setStyleSheet("""
+            QDoubleSpinBox {
+                background: palette(Base);
+                border: 1px solid palette(Mid);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QDoubleSpinBox:focus {
+                border: 2px solid palette(Highlight);
+            }
+        """)
+        return field
+    
+    def _make_connections(self):
+        """Connect signals and slots."""
+        self.calculate_button.clicked.connect(self._on_calculate)
         
-        self.backlog_chart = pg.PlotWidget()
-        self.backlog_chart.setTitle("Data Backlog")
-        self.backlog_chart.setLabel('left', 'Backlog (MB)')
-        self.backlog_chart.setLabel('bottom', 'Time (days)')
-        chart_layout.addWidget(self.backlog_chart)
-        
-        layout.addLayout(chart_layout)
-        
-        # Buttons
-        button_layout = QHBoxLayout()
-        
-        self.calculate_button = QPushButton("Calculate")
-        self.calculate_button.clicked.connect(self.calculate)
-        button_layout.addWidget(self.calculate_button)
-        
-        self.export_csv_button = QPushButton("Export CSV")
-        self.export_csv_button.clicked.connect(self.export_csv)
-        button_layout.addWidget(self.export_csv_button)
-        
-        self.export_excel_button = QPushButton("Export Excel")
-        self.export_excel_button.clicked.connect(self.export_excel)
-        button_layout.addWidget(self.export_excel_button)
-        
-        layout.addLayout(button_layout)
-        
-    def calculate(self):
-        
-        """Calculate data budget and update UI."""
-        try:
-            # Get the input values
-            data_rate = float(self.data_rate_input.text()) * 1e6  # Convert to bps
-            duty_cycle = float(self.duty_cycle_input.text())
-            downlink_rate = float(self.downlink_rate_input.text()) * 1e6  # Convert to bps
-            downlink_duration = float(self.downlink_duration_input.text())
-            storage_capacity = float(self.storage_capacity_input.text())
-            current_storage = float(self.current_storage_input.text())
-            
-            # Calculate the results
-            result = self.calculator.calculate(
-                data_rate=data_rate,
-                duty_cycle=duty_cycle,
-                downlink_rate=downlink_rate,
-                downlink_duration=downlink_duration,
-                storage_capacity=storage_capacity,
-                current_storage=current_storage
-            )
-            
-            # Update results table
-            self.results_table.setRowCount(5)
-            self.results_table.setItem(0, 0, QTableWidgetItem("Data Generated"))
-            self.results_table.setItem(0, 1, QTableWidgetItem(f"{result.data_generated:.1f} MB/day"))
-            self.results_table.setItem(1, 0, QTableWidgetItem("Downlink Capacity"))
-            self.results_table.setItem(1, 1, QTableWidgetItem(f"{result.downlink_capacity:.1f} MB/day"))
-            self.results_table.setItem(2, 0, QTableWidgetItem("Storage Required"))
-            self.results_table.setItem(2, 1, QTableWidgetItem(f"{result.storage_required:.1f} MB"))
-            self.results_table.setItem(3, 0, QTableWidgetItem("Storage Available"))
-            self.results_table.setItem(3, 1, QTableWidgetItem(f"{result.storage_available:.1f} MB"))
-            self.results_table.setItem(4, 0, QTableWidgetItem("Backlog"))
-            self.results_table.setItem(4, 1, QTableWidgetItem(f"{result.backlog:.1f} MB"))
-            
-            # Update recommendations
-            self.recommendations_text.clear()
-            if result.recommendations:
-                self.recommendations_text.append("Recommendations:")
-                for rec in result.recommendations:
-                    self.recommendations_text.append(f"• {rec}")
-            
-            # Update charts
-            self.update_charts(result)
-            
-        except ValueError as e:
-            QMessageBox.critical(self, "Error", f"Invalid input: {str(e)}")
-            
-    def update_charts(self, result):
-        """Update the storage and backlog charts."""
-        # Clear existing plots
-        self.storage_chart.clear()
-        self.backlog_chart.clear()
-        
-        # Generate 30-day projection
-        days = list(range(31))
-        storage = []
-        backlog = []
-        
-        current_storage = float(self.current_storage_input.text())
-        daily_accumulation = result.data_generated - result.downlink_capacity
-        
-        for day in days:
-            storage.append(min(current_storage + day * daily_accumulation, 
-                             float(self.storage_capacity_input.text())))
-            backlog.append(max(0, day * daily_accumulation))
-        
-        # Add storage plot
-        self.storage_chart.plot(days, storage, pen='b')
-        
-        # Add backlog plot
-        self.backlog_chart.plot(days, backlog, pen='r')
-        
-    def export_csv(self):
-        """Export the data budget analysis to CSV."""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export CSV",
-            str(Path.home()),
-            "CSV Files (*.csv)"
-        )
-        
-        if file_path:
-            try:
-                data = []
-                for row in range(self.results_table.rowCount()):
-                    param = self.results_table.item(row, 0).text()
-                    value = self.results_table.item(row, 1).text()
-                    data.append([param, value])
-                
-                df = pd.DataFrame(data, columns=["Parameter", "Value"])
-                df.to_csv(file_path, index=False)
-                QMessageBox.information(self, "Success", "CSV exported successfully")
-                
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export CSV: {str(e)}")
-                
-    def export_excel(self):
-        """Export the data budget analysis to Excel."""
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Excel",
-            str(Path.home()),
-            "Excel Files (*.xlsx)"
-        )
-        
-        if file_path:
-            try:
-                data = []
-                for row in range(self.results_table.rowCount()):
-                    param = self.results_table.item(row, 0).text()
-                    value = self.results_table.item(row, 1).text()
-                    data.append([param, value])
-                
-                df = pd.DataFrame(data, columns=["Parameter", "Value"])
-                df.to_excel(file_path, index=False)
-                QMessageBox.information(self, "Success", "Excel exported successfully")
-                
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to export Excel: {str(e)}")
-                
-    def get_config(self):
-        """Get current configuration as a dictionary."""
-        return {
-            'data_rate': self.data_rate_input.text(),
-            'duty_cycle': self.duty_cycle_input.text(),
-            'downlink_rate': self.downlink_rate_input.text(),
-            'downlink_duration': self.downlink_duration_input.text(),
-            'storage_capacity': self.storage_capacity_input.text(),
-            'current_storage': self.current_storage_input.text()
+        # Connect parameter changes
+        for field, param in [
+            (self.payload_rate, 'payload_data_rate'),
+            (self.storage_capacity, 'storage_capacity'),
+            (self.downlink_rate, 'downlink_rate'),
+            (self.pass_duration, 'pass_duration'),
+            (self.passes_per_day, 'passes_per_day')
+        ]:
+            field.valueChanged.connect(lambda v, p=param: self.parameter_changed.emit(p, v))
+    
+    def _on_calculate(self):
+        """Handle calculate button click."""
+        params = {
+            'payload_data_rate': self.payload_rate.value(),
+            'storage_capacity': self.storage_capacity.value(),
+            'downlink_rate': self.downlink_rate.value(),
+            'pass_duration': self.pass_duration.value(),
+            'passes_per_day': self.passes_per_day.value()
         }
+        self.calculate_clicked.emit(params)
+    
+    def update_results(self, result):
+        """Update the display with calculation results."""
+        # Update metric cards
+        self.data_generated.value.setText(f"{result.total_data_per_day:.2f}")
+        self.downlink_capacity.value.setText(f"{result.available_downlink_per_day:.2f}")
+        self.storage_backlog.value.setText(f"{result.storage_backlog:.2f}")
         
-    def set_config(self, config):
-        """Set configuration from a dictionary."""
-        self.data_rate_input.setText(config['data_rate'])
-        self.duty_cycle_input.setText(config['duty_cycle'])
-        self.downlink_rate_input.setText(config['downlink_rate'])
-        self.downlink_duration_input.setText(config['downlink_duration'])
-        self.storage_capacity_input.setText(config['storage_capacity'])
-        self.current_storage_input.setText(config['current_storage']) 
+        # Update status
+        self.status_label.setText(result.storage_status)
+        
+        # Update recommendations
+        if result.recommendations:
+            self.recommendations_label.setText("\n".join(result.recommendations))
+        else:
+            self.recommendations_label.setText("No recommendations needed - data budget is balanced.")
+        
+        # Color code the backlog based on status
+        if result.storage_backlog > 0:
+            self.storage_backlog.value.setStyleSheet("QLabel { color: #FF4444; }")
+        else:
+            self.storage_backlog.value.setStyleSheet("QLabel { color: #44FF44; }")
+    
+    def show_error(self, title: str, message: str):
+        """Show error message dialog."""
+        QMessageBox.critical(self, title, message) 
